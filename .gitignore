@@ -4,3 +4,8 @@ node_modules/
 dist/
 *.log
 .DS_Store
+
+# Sensitive: logged-in Udemy session + private financials — never commit/deploy.
+udemy-auth.json
+revenue-cache.json
+revenue-discovery.json

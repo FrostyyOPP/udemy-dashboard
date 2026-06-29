@@ -8,7 +8,9 @@
     "start": "node index.js",
     "dev": "node --watch index.js",
     "test:auth": "node testAuth.js",
-    "scrape:enrollment": "node scrapeEnrollment.js"
+    "scrape:enrollment": "node scrapeEnrollment.js",
+    "auth:udemy": "node captureAuth.js",
+    "scrape:revenue": "node scrapeRevenue.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

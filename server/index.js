@@ -11,6 +11,7 @@ const PORT = process.env.PORT || 5055;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // CACHE_FILE can point at a Render persistent disk; defaults to the repo copy.
 const CACHE_FILE = process.env.CACHE_FILE || join(__dirname, 'enrollment-cache.json');
+const REVENUE_FILE = process.env.REVENUE_FILE || join(__dirname, 'revenue-cache.json');
 
 // Read scraped enrollment counts (fresh each call so a re-scrape shows up).
 function enrollmentCache() {
@@ -19,6 +20,16 @@ function enrollmentCache() {
     return JSON.parse(readFileSync(CACHE_FILE, 'utf8'));
   } catch {
     return { counts: {}, scrapedAt: null };
+  }
+}
+
+// Read scraped revenue (per-course + total). Absent on the public deploy.
+function revenueCache() {
+  if (!existsSync(REVENUE_FILE)) return { perCourse: {}, total: null, currency: 'USD' };
+  try {
+    return JSON.parse(readFileSync(REVENUE_FILE, 'utf8'));
+  } catch {
+    return { perCourse: {}, total: null, currency: 'USD' };
   }
 }
 
@@ -58,7 +69,12 @@ const COURSE_FIELDS =
 // pass ?page=N for a single page.
 app.get('/api/courses', wrap(async (req, res) => {
   const { counts, scrapedAt } = enrollmentCache();
-  const withEnrollment = (c) => ({ ...c, num_subscribers: counts[c.id] ?? null });
+  const { perCourse, total: totalRevenue, currency } = revenueCache();
+  const enrich = (c) => ({
+    ...c,
+    num_subscribers: counts[c.id] ?? null,
+    revenue: perCourse[c.id] ?? null,
+  });
 
   if (req.query.page) {
     const data = await udemyGet('/taught-courses/courses/', {
@@ -66,8 +82,10 @@ app.get('/api/courses', wrap(async (req, res) => {
       page_size: req.query.page_size || 100,
       'fields[course]': COURSE_FIELDS,
     });
-    data.results = (data.results || []).map(withEnrollment);
+    data.results = (data.results || []).map(enrich);
     data.enrollment_scraped_at = scrapedAt;
+    data.total_revenue = totalRevenue;
+    data.currency = currency;
     return res.json(data);
   }
 
@@ -87,8 +105,10 @@ app.get('/api/courses', wrap(async (req, res) => {
   }
   res.json({
     count: results.length,
-    results: results.map(withEnrollment),
+    results: results.map(enrich),
     enrollment_scraped_at: scrapedAt,
+    total_revenue: totalRevenue,
+    currency,
   });
 }));
 

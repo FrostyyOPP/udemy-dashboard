@@ -10,10 +10,14 @@ function csvCell(v) {
 const COLUMNS = [
   { key: 'title', label: 'Course', sortable: true },
   { key: 'num_subscribers', label: 'Students', sortable: true, num: true },
+  { key: 'revenue', label: 'Revenue', sortable: true, num: true },
   { key: 'rating', label: 'Rating', sortable: true, num: true },
   { key: 'num_reviews', label: 'Reviews', sortable: true, num: true },
   { key: 'is_published', label: 'Status', sortable: true },
 ];
+
+const usd = (n) =>
+  n == null ? '—' : n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 
 export default function App() {
   const [health, setHealth] = useState(null);
@@ -24,6 +28,7 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState({ key: 'num_reviews', dir: 'desc' });
   const [selected, setSelected] = useState(null);
+  const [totalRevenue, setTotalRevenue] = useState(null);
 
   useEffect(() => {
     fetch('/api/health')
@@ -40,6 +45,7 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setCourses(data.results || []);
+      setTotalRevenue(data.total_revenue ?? null);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -75,11 +81,12 @@ export default function App() {
   }
 
   function exportCsv() {
-    const headers = ['Title', 'Headline', 'Students', 'Rating', 'Reviews', 'Status', 'Created', 'URL'];
+    const headers = ['Title', 'Headline', 'Students', 'Revenue (USD)', 'Rating', 'Reviews', 'Status', 'Created', 'URL'];
     const rows = view.map((c) => [
       c.title,
       c.headline,
       c.num_subscribers ?? '',
+      c.revenue ?? '',
       c.rating ? Number(c.rating).toFixed(2) : '',
       c.num_reviews ?? 0,
       c.is_published ? 'published' : 'draft',
@@ -127,6 +134,9 @@ export default function App() {
         <div className="kpis">
           <div className="kpi"><span>{courses.length}</span>courses</div>
           <div className="kpi"><span>{totalStudents ? totalStudents.toLocaleString() : '—'}</span>total students</div>
+          {totalRevenue != null && (
+            <div className="kpi"><span>{usd(totalRevenue)}</span>total revenue</div>
+          )}
           <div className="kpi"><span>{published}</span>published</div>
           <div className="kpi"><span>{totalReviews.toLocaleString()}</span>total reviews</div>
           <div className="kpi"><span>{avgRating ?? '—'}</span>avg rating ★</div>
@@ -175,6 +185,7 @@ export default function App() {
                 <td style={{ textAlign: 'right' }}>
                   {c.num_subscribers != null ? c.num_subscribers.toLocaleString() : '—'}
                 </td>
+                <td style={{ textAlign: 'right' }}>{usd(c.revenue)}</td>
                 <td style={{ textAlign: 'right' }}>{c.rating ? Number(c.rating).toFixed(2) : '—'}</td>
                 <td style={{ textAlign: 'right' }}>{(c.num_reviews ?? 0).toLocaleString()}</td>
                 <td>
