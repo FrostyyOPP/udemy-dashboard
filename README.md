@@ -51,6 +51,24 @@ npm run dev         # opens http://localhost:5173
 - **No coupon/promotion/discount endpoints exist** (all 404).
 - `client/` — React (Vite) UI. Proxies `/api` to the backend.
 
+## Deploy to Render
+Single web service serves the API + built frontend, gated by HTTP basic auth.
+
+1. Push this repo to GitHub (already done).
+2. Render → **New + → Blueprint** → connect `FrostyyOPP/udemy-dashboard`
+   (authorize Render to read the private repo). It reads `render.yaml`.
+3. Set the secret env vars in the dashboard:
+   - `UDEMY_API_KEY` — your Udemy key
+   - `DASHBOARD_PASSWORD` — the password you'll use to log in
+   - (`DASHBOARD_USER` defaults to `admin`)
+4. Deploy → you get `https://udemy-dashboard.onrender.com`. Browser prompts for
+   user/password on first load.
+
+Notes:
+- Free tier sleeps after inactivity (~30–60s cold start on next visit).
+- The enrollment cache is committed, so data shows immediately. To refresh it,
+  re-run the scraper locally and commit `server/enrollment-cache.json`.
+
 ## Enrollment (student counts)
 The Udemy API does **not** expose enrollment, so it's scraped from public course
 pages with Playwright and cached in `server/enrollment-cache.json`.
