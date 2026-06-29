@@ -1,0 +1,21 @@
+# Render Blueprint — deploy with "New + → Blueprint" pointed at this repo.
+# Set the secret env vars (UDEMY_API_KEY, DASHBOARD_PASSWORD) in the dashboard.
+services:
+  - type: web
+    name: udemy-dashboard
+    runtime: node
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Don't download Chromium during build — the scraper runs locally, not here.
+      - key: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
+        value: "1"
+      - key: UDEMY_API_KEY
+        sync: false          # set in dashboard (secret)
+      - key: DASHBOARD_USER
+        value: admin
+      - key: DASHBOARD_PASSWORD
+        sync: false          # set in dashboard (your login password)
