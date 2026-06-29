@@ -9,3 +9,5 @@ dist/
 udemy-auth.json
 revenue-cache.json
 revenue-discovery.json
+coupon-cache.json
+discover-output.json
