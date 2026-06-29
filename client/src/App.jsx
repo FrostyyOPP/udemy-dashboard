@@ -8,7 +8,8 @@ function csvCell(v) {
 }
 
 const COLUMNS = [
-  { key: 'title', label: 'Course', sortable: true },
+  { key: 'title', label: 'Course', sortable: true, str: true },
+  { key: 'id', label: 'Course ID', sortable: true, str: true },
   { key: 'num_subscribers', label: 'Students', sortable: true, num: true },
   { key: 'revenue', label: 'Revenue', sortable: true, num: true },
   { key: 'rating', label: 'Rating', sortable: true, num: true },
@@ -65,9 +66,10 @@ export default function App() {
     if (q) rows = rows.filter((c) => c.title?.toLowerCase().includes(q));
     const { key, dir } = sort;
     const mul = dir === 'asc' ? 1 : -1;
+    const isStr = COLUMNS.find((c) => c.key === key)?.str;
     return [...rows].sort((a, b) => {
       let av = a[key], bv = b[key];
-      if (key === 'title') return mul * String(av || '').localeCompare(String(bv || ''));
+      if (isStr) return mul * String(av || '').localeCompare(String(bv || ''));
       av = Number(av) || 0;
       bv = Number(bv) || 0;
       return mul * (av - bv);
@@ -81,9 +83,10 @@ export default function App() {
   }
 
   function exportCsv() {
-    const headers = ['Title', 'Headline', 'Students', 'Revenue (USD)', 'Rating', 'Reviews', 'Status', 'Created', 'URL'];
+    const headers = ['Title', 'Course ID', 'Headline', 'Students', 'Revenue (USD)', 'Rating', 'Reviews', 'Status', 'Created', 'URL'];
     const rows = view.map((c) => [
       c.title,
+      c.id,
       c.headline,
       c.num_subscribers ?? '',
       c.revenue ?? '',
@@ -182,6 +185,16 @@ export default function App() {
             {view.map((c) => (
               <tr key={c.id} onClick={() => setSelected(c)} className="row">
                 <td>{c.title}</td>
+                <td
+                  className="mono"
+                  title="Click to copy"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigator.clipboard?.writeText(c.id);
+                  }}
+                >
+                  {c.id}
+                </td>
                 <td style={{ textAlign: 'right' }}>
                   {c.num_subscribers != null ? c.num_subscribers.toLocaleString() : '—'}
                 </td>
