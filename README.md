@@ -1,93 +1,109 @@
-# Udemy Instructor Dashboard (MERN)
+# Udemy Instructor Dashboard
 
-A dashboard that reads your Udemy courses, ratings, reviews, and Q&A from the
-official **Udemy Instructor API**.
+A self-hosted **MERN-style dashboard** for Udemy instructors: see all your
+courses, ratings, reviews, Q&A, enrollment, and (optionally) revenue in one
+place — with search, sort, and CSV export.
 
-> **Note on coupons:** Udemy's official API has **no coupon endpoints** — you
-> cannot list or create coupons through it (the Affiliate API was discontinued
-> Jan 2025). Coupons can only be managed in the Udemy web UI. This dashboard
-> covers the analytics the API *does* expose. Coupon automation would require a
-> separate browser-automation module.
+Built around what the Udemy Instructor API actually exposes (which is less than
+you'd expect), with documented workarounds for the rest.
 
-## Setup
+- **Express** backend that proxies the Udemy Instructor API (your key stays server-side)
+- **React + Vite** frontend: searchable/sortable table, per-course detail drawer, CSV export
+- **Playwright** scrapers for the data the API doesn't expose (enrollment, revenue, coupons)
+- One-command **Render** deploy, gated by HTTP basic auth
 
-### 1. Credentials
-A **single API key** is all you need — it's sent as a **Bearer token**. Put it in
-`server/.env`:
+---
+
+## What the Udemy API does and doesn't give you
+
+This was the hard-won part. Verified against the live API:
+
+| Data | Available? | Source used here |
+|------|-----------|------------------|
+| Courses, ratings, review counts, published state | ✅ API | `GET /instructor-api/v1/taught-courses/courses/` (`fields[course]=@all`) |
+| Reviews (rating + text) | ✅ API | `/taught-courses/reviews/?course=<id>` |
+| Q&A | ✅ API | `/taught-courses/questions/?course=<id>` |
+| **Student count / enrollment** | ❌ Not in API | Scraped from public course pages (Playwright) |
+| **Revenue** | ❌ Not in API, not public | Authenticated scrape (your session) |
+| **Coupons** | ❌ Not in API | Authenticated scrape / browser automation |
+
+Notes for anyone building on the Udemy API:
+- Auth is a **single key sent as `Authorization: Bearer <key>`** — *not* Basic auth / client-id+secret.
+- The **Affiliate API was discontinued Jan 2025**; the Instructor API is in maintenance mode.
+- Course IDs are opaque strings ending in `==` — pass them as query params, don't URL-encode into a path.
+
+## Quick start
+
+### 1. Get an API key
+Udemy instructor account → API key. Put it in `server/.env` (copy from `.env.example`):
 
 ```
-UDEMY_API_KEY=...
+UDEMY_API_KEY=your_key_here
 ```
 
-### 2. Backend
+### 2. Run it
 ```bash
-cd server
-npm install
-npm run test:auth   # verifies your credentials work
-npm run dev         # starts API on http://localhost:5055
+# backend
+cd server && npm install && npm run test:auth && npm run dev   # http://localhost:5055
+
+# frontend (separate terminal)
+cd client && npm install && npm run dev                        # http://localhost:5173
 ```
 
-### 3. Frontend
-```bash
-cd client
-npm install
-npm run dev         # opens http://localhost:5173
-```
+## API (backend)
+| Route | Description |
+|-------|-------------|
+| `GET /api/health` | Is the key configured? |
+| `GET /api/courses` | All taught courses (+ merged enrollment/revenue if scraped) |
+| `GET /api/reviews?course=<id>` | Reviews for a course |
+| `GET /api/questions?course=<id>` | Q&A for a course |
+| `GET /api/udemy/*` | Generic passthrough to any instructor endpoint |
 
-## How it works
-- `server/` — Express proxy. Adds Basic auth and forwards to Udemy so your
-  secret never reaches the browser.
-  - `GET /api/health` — is the key present?
-  - `GET /api/courses` — your taught courses (id, title, rating, num_reviews, is_published)
-  - `GET /api/reviews?course=<id>` — reviews (rating + content)
-  - `GET /api/questions?course=<id>` — Q&A
-  - `GET /api/udemy/*` — generic passthrough to any instructor endpoint
-
-### Confirmed live API facts
-- Base: `https://www.udemy.com/instructor-api/v1`, auth `Authorization: Bearer <key>`.
-- Courses: `/taught-courses/courses/` — use `fields[course]=@all` to get `rating`,
-  `num_reviews`, `headline`, `is_published`. **Student count is NOT exposed.**
-- Reviews: `/taught-courses/reviews/?course=<id>` · Questions: `/taught-courses/questions/?course=<id>`
-- **No coupon/promotion/discount endpoints exist** (all 404).
-- `client/` — React (Vite) UI. Proxies `/api` to the backend.
-
-## Deploy to Render
-Single web service serves the API + built frontend, gated by HTTP basic auth.
-
-1. Push this repo to GitHub (already done).
-2. Render → **New + → Blueprint** → connect `FrostyyOPP/udemy-dashboard`
-   (authorize Render to read the private repo). It reads `render.yaml`.
-3. Set the secret env vars in the dashboard:
-   - `UDEMY_API_KEY` — your Udemy key
-   - `DASHBOARD_PASSWORD` — the password you'll use to log in
-   - (`DASHBOARD_USER` defaults to `admin`)
-4. Deploy → you get `https://udemy-dashboard.onrender.com`. Browser prompts for
-   user/password on first load.
-
-Notes:
-- Free tier sleeps after inactivity (~30–60s cold start on next visit).
-- The enrollment cache is committed, so data shows immediately. To refresh it,
-  re-run the scraper locally and commit `server/enrollment-cache.json`.
-
-## Enrollment (student counts)
-The Udemy API does **not** expose enrollment, so it's scraped from public course
-pages with Playwright and cached in `server/enrollment-cache.json`.
+## Enrollment scraping (optional)
+The API doesn't expose student counts, so they're scraped from public course pages:
 
 ```bash
 cd server
 npx playwright install chromium   # one-time
-npm run scrape:enrollment         # ~15 min for 168 courses; re-run to fill misses
+npm run scrape:enrollment         # caches to server/enrollment-cache.json
 ```
 
-- Cloudflare rate-limits rapid same-session requests, so the scraper uses a
-  **fresh browser context per course** + a 2–4s delay. This gets ~100% coverage
-  but is intentionally slow.
-- Results are cached; re-running **skips courses already scraped** (use
-  `--force` to re-scrape everything and refresh the numbers).
-- The dashboard merges the cache into `/api/courses` automatically — just hit
-  **Refresh** after a scrape completes.
+Udemy is behind Cloudflare, which rate-limits rapid same-session requests — so the
+scraper uses a **fresh browser context per course** + a short delay (≈100% coverage,
+intentionally slow). Re-runs **skip already-cached courses**; `--force` refreshes all.
+The dashboard merges the cache automatically.
 
-## Roadmap ideas
-- Reviews & Q&A drill-down per course
-- Enrollment / revenue trends (add MongoDB to snapshot daily numbers — the "N" in MERN)
-- CSV export of coupon codes to paste into Udemy (since the API can't create them)
+## Revenue & coupons (optional, authenticated)
+These live only behind your Udemy login. Udemy blocks automated *logins*, so the
+reliable path is to reuse your existing session via a cookie export:
+
+1. Install the **Cookie-Editor** browser extension, open udemy.com logged in.
+2. Export udemy.com cookies as JSON → save to `server/udemy-cookies.json`.
+3. `npm run import:cookies` → writes a gitignored `udemy-auth.json` session.
+4. `npm run discover` → captures the authenticated page structure to build parsers.
+
+All session/financial files (`udemy-auth.json`, `udemy-cookies.json`,
+`revenue-cache.json`, browser profiles) are **gitignored** and never deployed.
+
+## Deploy (Render)
+A single web service serves the API + built frontend, protected by HTTP basic auth.
+
+1. Push to your own GitHub repo.
+2. Render → **New + → Blueprint** → connect the repo (it reads `render.yaml`).
+3. Set env vars: `UDEMY_API_KEY`, `DASHBOARD_PASSWORD` (and optionally `DASHBOARD_USER`, default `admin`).
+4. Deploy → browser prompts for the password on first load.
+
+> The deploy serves live API data in real time. Scraped data (enrollment/revenue)
+> comes from cache files, which are gitignored — populate them locally and supply
+> via a Render disk, or run the scrapers on a private always-on host.
+
+## Security
+- The API key lives only in `server/.env` / host secrets — never in the repo or the browser.
+- The dashboard exposes private course data; always deploy it **password-protected**.
+- Authenticated scraping reuses your Udemy session — keep `udemy-auth.json` private.
+
+## Tech
+React 18 + Vite · Node/Express · Playwright · deployed on Render.
+
+## License
+[MIT](LICENSE)

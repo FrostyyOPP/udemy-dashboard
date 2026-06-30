@@ -5,10 +5,14 @@ dist/
 *.log
 .DS_Store
 
-# Sensitive: logged-in Udemy session + private financials — never commit/deploy.
+# Sensitive: your data + logged-in session — never commit/deploy.
+# (enrollment-cache.example.json is the committed sample; the real one is ignored)
+enrollment-cache.json
 udemy-auth.json
+udemy-cookies.json
 revenue-cache.json
 revenue-discovery.json
 coupon-cache.json
 discover-output.json
 .chromium-profile/
+.cdp-profile/
