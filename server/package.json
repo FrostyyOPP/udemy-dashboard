@@ -12,6 +12,7 @@
     "auth:udemy": "node captureAuth.js",
     "import:cookies": "node importCookies.js",
     "scrape:revenue": "node scrapeRevenue.js",
+    "scrape:captions": "node scrapeCaptions.js",
     "discover": "node discover.js"
   },
   "dependencies": {

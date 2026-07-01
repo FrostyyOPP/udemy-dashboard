@@ -14,8 +14,15 @@ const COLUMNS = [
   { key: 'revenue', label: 'Revenue', sortable: true, num: true },
   { key: 'rating', label: 'Rating', sortable: true, num: true },
   { key: 'num_reviews', label: 'Reviews', sortable: true, num: true },
+  { key: 'caption_locales', label: 'Captions', sortable: true, arr: true },
   { key: 'is_published', label: 'Status', sortable: true },
 ];
+
+// caption_locales may be strings ("English") or objects ({title/locale}). Normalize.
+const capNames = (list) =>
+  !Array.isArray(list)
+    ? []
+    : list.map((x) => (typeof x === 'string' ? x : x?.title || x?.locale || '')).filter(Boolean);
 
 const usd = (n) =>
   n == null ? '—' : n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
@@ -70,6 +77,8 @@ export default function App() {
     return [...rows].sort((a, b) => {
       let av = a[key], bv = b[key];
       if (isStr) return mul * String(av || '').localeCompare(String(bv || ''));
+      if (Array.isArray(av)) av = av.length;
+      if (Array.isArray(bv)) bv = bv.length;
       av = Number(av) || 0;
       bv = Number(bv) || 0;
       return mul * (av - bv);
@@ -83,7 +92,7 @@ export default function App() {
   }
 
   function exportCsv() {
-    const headers = ['Title', 'Course ID', 'Headline', 'Students', 'Revenue (USD)', 'Rating', 'Reviews', 'Status', 'Created', 'URL'];
+    const headers = ['Title', 'Course ID', 'Headline', 'Students', 'Revenue (USD)', 'Rating', 'Reviews', 'Captions', 'Status', 'Created', 'URL'];
     const rows = view.map((c) => [
       c.title,
       c.id,
@@ -92,6 +101,7 @@ export default function App() {
       c.revenue ?? '',
       c.rating ? Number(c.rating).toFixed(2) : '',
       c.num_reviews ?? 0,
+      capNames(c.caption_locales).join(' | '),
       c.is_published ? 'published' : 'draft',
       c.created ? c.created.slice(0, 10) : '',
       c.url ? `https://www.udemy.com${c.url}` : '',
@@ -201,6 +211,18 @@ export default function App() {
                 <td style={{ textAlign: 'right' }}>{usd(c.revenue)}</td>
                 <td style={{ textAlign: 'right' }}>{c.rating ? Number(c.rating).toFixed(2) : '—'}</td>
                 <td style={{ textAlign: 'right' }}>{(c.num_reviews ?? 0).toLocaleString()}</td>
+                <td>
+                  {capNames(c.caption_locales).length ? (
+                    <span title={capNames(c.caption_locales).join(', ')}>
+                      {capNames(c.caption_locales).slice(0, 3).join(', ')}
+                      {capNames(c.caption_locales).length > 3
+                        ? ` +${capNames(c.caption_locales).length - 3}`
+                        : ''}
+                    </span>
+                  ) : (
+                    '—'
+                  )}
+                </td>
                 <td>
                   {c.is_published ? (
                     <span className="tag good">published</span>

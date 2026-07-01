@@ -26,6 +26,7 @@ This was the hard-won part. Verified against the live API:
 | **Student count / enrollment** | ❌ Not in API | Scraped from public course pages (Playwright) |
 | **Revenue** | ❌ Not in API, not public | Authenticated scrape (your session) |
 | **Coupons** | ❌ Not in API | Authenticated scrape / browser automation |
+| **Caption / subtitle languages** | ❌ Not in API, not public | Authenticated scrape of `caption_locales` (your session) |
 
 Notes for anyone building on the Udemy API:
 - Auth is a **single key sent as `Authorization: Bearer <key>`** — *not* Basic auth / client-id+secret.

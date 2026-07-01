@@ -33,6 +33,17 @@ function revenueCache() {
   }
 }
 
+// Read scraped caption languages: { perCourse: { <courseId>: ["en","es",...] } }.
+const CAPTIONS_FILE = process.env.CAPTIONS_FILE || join(__dirname, 'caption-cache.json');
+function captionsCache() {
+  if (!existsSync(CAPTIONS_FILE)) return { perCourse: {} };
+  try {
+    return JSON.parse(readFileSync(CAPTIONS_FILE, 'utf8'));
+  } catch {
+    return { perCourse: {} };
+  }
+}
+
 app.use(cors());
 app.use(express.json());
 
@@ -70,10 +81,12 @@ const COURSE_FIELDS =
 app.get('/api/courses', wrap(async (req, res) => {
   const { counts, scrapedAt } = enrollmentCache();
   const { perCourse, total: totalRevenue, currency } = revenueCache();
+  const { perCourse: captions } = captionsCache();
   const enrich = (c) => ({
     ...c,
     num_subscribers: counts[c.id] ?? null,
     revenue: perCourse[c.id] ?? null,
+    caption_locales: captions[c.id] ?? null,
   });
 
   if (req.query.page) {
