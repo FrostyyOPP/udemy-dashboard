@@ -4,10 +4,12 @@ import { useEffect, useState } from 'react';
 export default function CourseraPanel() {
   const [conn, setConn] = useState(null);
   const [data, setData] = useState(null);
+  const [overview, setOverview] = useState(null);
 
   useEffect(() => {
     fetch('/api/coursera/connection').then((r) => r.json()).then(setConn).catch(() => setConn({ connected: false }));
     fetch('/api/coursera/courses').then((r) => r.json()).then(setData).catch(() => setData({ courses: [] }));
+    fetch('/api/coursera/overview').then((r) => r.json()).then(setOverview).catch(() => setOverview({ kpis: {} }));
   }, []);
 
   if (!conn?.connected) {
@@ -23,17 +25,21 @@ export default function CourseraPanel() {
   }
 
   const courses = data?.courses || [];
+  const kpis = overview?.kpis || {};
 
   return (
     <div>
       <div className="kpis">
-        <div className="kpi"><span>{courses.length}</span>Coursera courses</div>
+        <div className="kpi"><span>{kpis['Launched Courses'] ?? courses.length}</span>launched courses</div>
+        <div className="kpi"><span>{kpis['Launched Specializations'] ?? '—'}</span>specializations</div>
         <div className="kpi"><span>Starweaver</span>partner (1510)</div>
       </div>
 
       <div className="banner" style={{ borderColor: 'var(--border)' }}>
-        ✓ Connected to <b>Starweaver</b> on Coursera. Course list below. Enrollments / ratings /
-        revenue live on a deeper analytics page — that's the next discovery step.
+        ✓ Connected to <b>Starweaver</b> on Coursera. Overview KPIs above are from the partner
+        analytics dashboard. <b>Enrollments / ratings / revenue</b> live inside embedded <b>Looker</b>
+        charts — those aren’t API-scrapable; use Looker’s “Download data” (CSV) on the analytics page
+        to export them, and I can ingest that.
       </div>
 
       {courses.length === 0 ? (

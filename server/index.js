@@ -171,6 +171,14 @@ app.get('/api/coursera/courses', (req, res) => {
   catch { res.json({ courses: [], scrapedAt: null }); }
 });
 
+// Coursera partner overview KPIs (from the Looker dashboard).
+app.get('/api/coursera/overview', (req, res) => {
+  const f = join(__dirname, 'coursera-overview-cache.json');
+  if (!existsSync(f)) return res.json({ kpis: {}, scrapedAt: null });
+  try { res.json(JSON.parse(readFileSync(f, 'utf8'))); }
+  catch { res.json({ kpis: {}, scrapedAt: null }); }
+});
+
 // Bulk-create coupons. User-triggered write. dryRun:true previews only.
 // Requires a connected session; opens a headed browser to POST to Udemy.
 app.post('/api/coupons/create', (req, res, next) => {
