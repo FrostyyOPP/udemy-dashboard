@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import CourseDetail from './CourseDetail.jsx';
 import EarningsReport from './EarningsReport.jsx';
 import ConnectUdemy from './ConnectUdemy.jsx';
+import ConnectCoursera from './ConnectCoursera.jsx';
+import CourseraPanel from './CourseraPanel.jsx';
 import CreateCoupons from './CreateCoupons.jsx';
 
 // Escape a value for CSV: wrap in quotes if it contains comma/quote/newline.
@@ -42,6 +44,7 @@ export default function App() {
   const [selected, setSelected] = useState(null);
   const [totalRevenue, setTotalRevenue] = useState(null);
   const [tab, setTab] = useState('all');
+  const [platform, setPlatform] = useState('udemy');
 
   useEffect(() => {
     fetch('/api/health')
@@ -138,11 +141,20 @@ export default function App() {
     <div className="wrap">
       <header className="apphead">
         <div>
-          <h1>Udemy Instructor Dashboard</h1>
-          <p>Your courses, ratings, and engagement — pulled live from the Instructor API.</p>
+          <h1>Instructor Dashboard</h1>
+          <p>Your courses, ratings, earnings, and coupons across platforms.</p>
+          <div className="platsw">
+            <button className={platform === 'udemy' ? 'active' : ''} onClick={() => setPlatform('udemy')}>Udemy</button>
+            <button className={platform === 'coursera' ? 'active' : ''} onClick={() => setPlatform('coursera')}>Coursera</button>
+          </div>
         </div>
-        <ConnectUdemy onConnected={loadCourses} />
+        {platform === 'udemy' ? <ConnectUdemy onConnected={loadCourses} /> : <ConnectCoursera />}
       </header>
+
+      {platform === 'coursera' && <CourseraPanel />}
+
+      {platform === 'udemy' && (
+      <>
 
       {health && !ready && (
         <div className="banner warn">
@@ -260,6 +272,8 @@ export default function App() {
       )}
 
       {selected && <CourseDetail course={selected} onClose={() => setSelected(null)} />}
+      </>
+      )}
       </>
       )}
     </div>

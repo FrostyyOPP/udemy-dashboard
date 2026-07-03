@@ -67,6 +67,9 @@ button.ghost:hover:not(:disabled) { border-color: var(--accent); color: #d9b8ff;
 .row:hover { background: #20242f; }
 
 .apphead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.platsw { display: inline-flex; gap: 4px; margin-top: 10px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
+.platsw button { background: transparent; color: var(--muted); border: 0; padding: 6px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; }
+.platsw button.active { background: var(--accent); color: #fff; }
 .conn { font-size: 13px; font-weight: 600; color: var(--good); cursor: pointer; white-space: nowrap; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; }
 .conn:hover { border-color: var(--good); }
 .modal { width: min(560px, 94vw); margin: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; align-self: center; max-height: 90vh; overflow: auto; }

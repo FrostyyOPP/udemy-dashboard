@@ -13,6 +13,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const CACHE_FILE = process.env.CACHE_FILE || join(__dirname, 'enrollment-cache.json');
 const REVENUE_FILE = process.env.REVENUE_FILE || join(__dirname, 'revenue-cache.json');
 const AUTH_FILE = join(__dirname, 'udemy-auth.json');
+const COURSERA_AUTH_FILE = join(__dirname, 'coursera-auth.json');
 
 // Convert a Cookie-Editor JSON export into a Playwright session (storageState).
 const sameSiteMap = { no_restriction: 'None', none: 'None', lax: 'Lax', strict: 'Strict' };
@@ -134,6 +135,31 @@ app.post('/api/connect', (req, res) => {
 // Disconnect: remove the saved session.
 app.post('/api/disconnect', (req, res) => {
   try { if (existsSync(AUTH_FILE)) unlinkSync(AUTH_FILE); } catch {}
+  res.json({ connected: false });
+});
+
+// --- Coursera account connection (session) -------------------------------
+app.get('/api/coursera/connection', (req, res) => {
+  res.json({ connected: existsSync(COURSERA_AUTH_FILE) });
+});
+
+app.post('/api/coursera/connect', (req, res) => {
+  const state = cookiesToState(req.body?.cookies ?? req.body);
+  const names = state.cookies.map((c) => c.name);
+  const isCoursera = state.cookies.some((c) => /coursera\.org$/.test(c.domain));
+  const loggedIn = names.includes('CAUTH'); // Coursera's auth cookie
+  if (!state.cookies.length || !isCoursera || !loggedIn) {
+    return res.status(400).json({
+      error: 'That does not look like a logged-in coursera.org cookie export (missing CAUTH). Export from coursera.org while signed in.',
+      cookieCount: state.cookies.length,
+    });
+  }
+  writeFileSync(COURSERA_AUTH_FILE, JSON.stringify(state, null, 2));
+  res.json({ connected: true, cookieCount: state.cookies.length });
+});
+
+app.post('/api/coursera/disconnect', (req, res) => {
+  try { if (existsSync(COURSERA_AUTH_FILE)) unlinkSync(COURSERA_AUTH_FILE); } catch {}
   res.json({ connected: false });
 });
 
