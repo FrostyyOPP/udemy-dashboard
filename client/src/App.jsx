@@ -17,6 +17,7 @@ const COLUMNS = [
   { key: 'rating', label: 'Rating', sortable: true, num: true },
   { key: 'num_reviews', label: 'Reviews', sortable: true, num: true },
   { key: 'caption_locales', label: 'Captions', sortable: true, arr: true },
+  { key: 'coupons', label: 'Coupons', sortable: true, arr: true },
   { key: 'is_published', label: 'Status', sortable: true },
 ];
 
@@ -239,6 +240,9 @@ export default function App() {
                   ) : (
                     '—'
                   )}
+                </td>
+                <td style={{ textAlign: 'right' }}>
+                  {Array.isArray(c.coupons) ? (c.coupons.length ? c.coupons.length : '0') : '—'}
                 </td>
                 <td>
                   {c.is_published ? (

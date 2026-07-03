@@ -23,7 +23,8 @@ export default function CourseDetail({ course, onClose }) {
       .catch((e) => setError(e.message));
   }, [course.id]);
 
-  const list = tab === 'reviews' ? reviews : questions;
+  const coupons = Array.isArray(course.coupons) ? course.coupons : null;
+  const list = tab === 'reviews' ? reviews : tab === 'questions' ? questions : coupons;
 
   return (
     <div className="drawer-backdrop" onClick={onClose}>
@@ -54,6 +55,9 @@ export default function CourseDetail({ course, onClose }) {
           <button className={tab === 'questions' ? 'active' : ''} onClick={() => setTab('questions')}>
             Q&A {questions && `(${questions.length})`}
           </button>
+          <button className={tab === 'coupons' ? 'active' : ''} onClick={() => setTab('coupons')}>
+            Coupons {coupons && `(${coupons.length})`}
+          </button>
         </div>
 
         {error && <div className="banner err">❌ {error}</div>}
@@ -64,8 +68,8 @@ export default function CourseDetail({ course, onClose }) {
           ) : list.length === 0 ? (
             <div className="muted">No {tab} for this course.</div>
           ) : (
-            list.map((item) => (
-              <div className="item" key={item.id}>
+            list.map((item, idx) => (
+              <div className="item" key={item.id || item.code || idx}>
                 {tab === 'reviews' ? (
                   <>
                     <div className="item-head">
@@ -75,7 +79,7 @@ export default function CourseDetail({ course, onClose }) {
                     </div>
                     <p>{item.content || <em className="muted">(rating only, no text)</em>}</p>
                   </>
-                ) : (
+                ) : tab === 'questions' ? (
                   <>
                     <div className="item-head">
                       <span className="muted">{item.user?.display_name || item.user?.title || 'Student'}</span>
@@ -83,6 +87,18 @@ export default function CourseDetail({ course, onClose }) {
                     </div>
                     <p><b>{item.title}</b></p>
                     {item.content && <p className="muted">{stripHtml(item.content)}</p>}
+                  </>
+                ) : (
+                  <>
+                    <div className="item-head">
+                      <b className="mono" style={{ color: 'var(--accent)', fontSize: 13 }}>{item.code}</b>
+                      <span className="tag good">{item.is_free ? 'FREE' : `$${item.discount_value}`}</span>
+                      <span className="muted small">{item.used}/{item.max_uses ?? '∞'} used</span>
+                    </div>
+                    <p className="muted small">
+                      {fmtDate(item.start)} → {fmtDate(item.end)}
+                      {item.active === false && ' · inactive'}
+                    </p>
                   </>
                 )}
               </div>

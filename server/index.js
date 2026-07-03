@@ -63,6 +63,17 @@ function captionsCache() {
   }
 }
 
+// Read scraped active coupons: { perCourse: { <courseId>: [{code,...}] } }.
+const COUPONS_FILE = process.env.COUPONS_FILE || join(__dirname, 'coupon-cache.json');
+function couponsCache() {
+  if (!existsSync(COUPONS_FILE)) return { perCourse: {} };
+  try {
+    return JSON.parse(readFileSync(COUPONS_FILE, 'utf8'));
+  } catch {
+    return { perCourse: {} };
+  }
+}
+
 app.use(cors());
 app.use(express.json());
 
@@ -137,11 +148,13 @@ app.get('/api/courses', wrap(async (req, res) => {
   const { counts, scrapedAt } = enrollmentCache();
   const { perCourse, total: totalRevenue, currency } = revenueCache();
   const { perCourse: captions } = captionsCache();
+  const { perCourse: coupons } = couponsCache();
   const enrich = (c) => ({
     ...c,
     num_subscribers: counts[c.id] ?? null,
     revenue: perCourse[c.id] ?? null,
     caption_locales: captions[c.id] ?? null,
+    coupons: coupons[c.id] ?? null,
   });
 
   if (req.query.page) {
