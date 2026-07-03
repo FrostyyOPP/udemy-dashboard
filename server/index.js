@@ -137,6 +137,16 @@ app.post('/api/disconnect', (req, res) => {
   res.json({ connected: false });
 });
 
+// Bulk-create coupons. User-triggered write. dryRun:true previews only.
+// Requires a connected session; opens a headed browser to POST to Udemy.
+app.post('/api/coupons/create', (req, res, next) => {
+  if (!existsSync(AUTH_FILE)) return res.status(400).json({ error: 'Not connected. Use Connect Udemy first.' });
+  import('./couponCreate.js')
+    .then(({ createCoupons }) => createCoupons(req.body || {}))
+    .then((out) => res.json(out))
+    .catch(next);
+});
+
 // --- Typed routes for the common instructor resources --------------------
 
 const COURSE_FIELDS =

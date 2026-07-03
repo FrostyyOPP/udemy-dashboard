@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import CourseDetail from './CourseDetail.jsx';
 import EarningsReport from './EarningsReport.jsx';
 import ConnectUdemy from './ConnectUdemy.jsx';
+import CreateCoupons from './CreateCoupons.jsx';
 
 // Escape a value for CSV: wrap in quotes if it contains comma/quote/newline.
 function csvCell(v) {
@@ -187,6 +188,7 @@ export default function App() {
         <button className="ghost" onClick={exportCsv} disabled={view.length === 0}>
           ⬇ Export CSV
         </button>
+        <CreateCoupons courses={courses} onDone={loadCourses} />
         <span className="muted">{view.length} shown</span>
       </div>
 
