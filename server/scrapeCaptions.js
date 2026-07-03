@@ -1,9 +1,9 @@
-// Collects the caption/subtitle languages for each course (not in the API).
-// Uses your saved session (run auth/import first). For each course it reads the
-// numeric id off the course page, then asks Udemy's api-2.0 for caption_locales.
-// Writes caption-cache.json: { perCourse: { <courseId>: ["English", ...] } }.
-// Run: npm run scrape:captions      (finalize endpoint via `npm run discover` if empty)
-import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+// Collects caption/subtitle languages per course (not in the instructor API).
+// Uses your connected session + a HEADED browser (Cloudflare blocks headless on
+// the api-2.0 data endpoints). Pulls the bulk taught-courses endpoint, then maps
+// results to instructor-API course ids by slug. Writes caption-cache.json.
+// Run: npm run scrape:captions   (a browser window opens briefly — leave it)
+import { writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { chromium } from 'playwright';
@@ -12,71 +12,74 @@ import { udemyGet } from './udemyClient.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const AUTH_FILE = join(__dirname, 'udemy-auth.json');
 const CACHE_FILE = join(__dirname, 'caption-cache.json');
+const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 if (!existsSync(AUTH_FILE)) {
-  console.error('❌ No session. Run `npm run auth:udemy` or `npm run import:cookies` first.');
+  console.error('❌ Not connected. Use "Connect Udemy" in the dashboard (or npm run import:cookies) first.');
   process.exit(1);
 }
 
-async function getAllCourses() {
-  const all = [];
-  let page = 1;
-  while (true) {
-    const data = await udemyGet('/taught-courses/courses/', {
-      page,
-      page_size: 100,
-      'fields[course]': '@default,published_title',
-    });
-    all.push(...(data.results || []));
-    if (!data.next) break;
-    page += 1;
-  }
-  return all;
-}
-
-const courses = await getAllCourses();
-console.log(`Fetching caption languages for ${courses.length} courses…`);
-
-const browser = await chromium.launch({ headless: true });
-let perCourse = {};
-if (existsSync(CACHE_FILE)) {
-  try { perCourse = JSON.parse(readFileSync(CACHE_FILE, 'utf8')).perCourse || {}; } catch {}
-}
-const save = () => writeFileSync(CACHE_FILE, JSON.stringify({ scrapedAt: new Date().toISOString(), perCourse }, null, 2));
-
-let ok = 0;
-for (let i = 0; i < courses.length; i++) {
-  const c = courses[i];
-  if (perCourse[c.id]) continue; // skip cached
-  const ctx = await browser.newContext({ storageState: AUTH_FILE });
-  const page = await ctx.newPage();
-  try {
-    await page.goto(`https://www.udemy.com/course/${c.published_title}/`, { waitUntil: 'domcontentloaded', timeout: 25000 }).catch(() => {});
-    const numId = await page.evaluate(() => {
-      const m = document.documentElement.outerHTML.match(/"course_?[iI]d"\s*[:=]\s*"?(\d{5,9})/);
-      return m ? m[1] : null;
-    });
-    if (numId) {
-      const locales = await page.evaluate(async (id) => {
-        const r = await fetch(`https://www.udemy.com/api-2.0/courses/${id}/?fields[course]=caption_locales`, {
-          credentials: 'include',
-          headers: { Accept: 'application/json' },
-        });
-        if (!r.ok) return null;
-        const j = await r.json();
-        return (j.caption_locales || []).map((x) => x.title || x.locale).filter(Boolean);
-      }, numId);
-      if (locales) { perCourse[c.id] = locales; ok++; if (ok % 5 === 0) save(); }
+// Read a JSON api-2.0 endpoint by NAVIGATING to it (survives Cloudflare when headed).
+async function apiGet(page, url) {
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 40000 }).catch(() => {});
+  for (let i = 0; i < 12; i++) {
+    const body = await page.evaluate(() => document.body.innerText).catch(() => '');
+    if (body && (body.trim().startsWith('{') || body.trim().startsWith('['))) {
+      try { return JSON.parse(body); } catch {}
     }
-  } catch {}
-  await ctx.close();
-  process.stdout.write(`\r  ${i + 1}/${courses.length} · ${ok} with captions`);
-  await sleep(1500 + Math.floor(Math.random() * 1500));
+    await sleep(2000); // wait out a Cloudflare challenge
+  }
+  return null;
+}
+
+console.log('Opening a browser to reach Udemy through your session…');
+const browser = await chromium.launch({
+  headless: false,
+  args: ['--disable-blink-features=AutomationControlled'],
+  ignoreDefaultArgs: ['--enable-automation'],
+});
+const ctx = await browser.newContext({ storageState: AUTH_FILE, userAgent: UA });
+await ctx.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => undefined }));
+const page = await ctx.newPage();
+
+// Warm up / clear the Cloudflare challenge once on a normal page.
+await page.goto('https://www.udemy.com/', { waitUntil: 'domcontentloaded', timeout: 40000 }).catch(() => {});
+await sleep(3000);
+
+// Pull all taught courses with caption_locales (paginated).
+const bySlug = {};
+let url = 'https://www.udemy.com/api-2.0/users/me/taught-courses/?page_size=100&fields[course]=title,published_title,caption_locales';
+let total = null;
+while (url) {
+  const data = await apiGet(page, url);
+  if (!data || !data.results) { console.error('⚠️ Could not read data (Cloudflare or session issue).'); break; }
+  total = data.count;
+  for (const c of data.results) {
+    if (c.published_title) {
+      bySlug[c.published_title] = (c.caption_locales || []).map((x) => x.english_title || x.title).filter(Boolean);
+    }
+  }
+  process.stdout.write(`\r  fetched ${Object.keys(bySlug).length}/${total ?? '?'} courses`);
+  url = data.next || null;
+  await sleep(1200);
 }
 process.stdout.write('\n');
 await browser.close();
-save();
 
-console.log(`✅ Got captions for ${Object.keys(perCourse).length} courses → ${CACHE_FILE}`);
-if (ok === 0) console.log('⚠️ Nothing captured — run `npm run discover` and share the output so I can fix the endpoint.');
+// Map slug → instructor-API course id (the ids the dashboard uses).
+const perCourse = {};
+let page2 = 1;
+while (true) {
+  const d = await udemyGet('/taught-courses/courses/', { page: page2, page_size: 100, 'fields[course]': '@default,published_title' });
+  for (const c of d.results || []) {
+    if (bySlug[c.published_title]) perCourse[c.id] = bySlug[c.published_title];
+  }
+  if (!d.next) break;
+  page2 += 1;
+}
+
+writeFileSync(CACHE_FILE, JSON.stringify({ scrapedAt: new Date().toISOString(), perCourse }, null, 2));
+const withCaps = Object.values(perCourse).filter((v) => v.length).length;
+console.log(`✅ Captions for ${Object.keys(perCourse).length} courses (${withCaps} have subtitles) → caption-cache.json`);
+console.log('   Refresh the dashboard to see the Captions column.');
