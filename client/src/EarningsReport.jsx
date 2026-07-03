@@ -12,7 +12,7 @@ function csvCell(v) {
 }
 
 // Published-only report: Course Title · Total Earning · Launched Date.
-export default function EarningsReport({ courses }) {
+export default function EarningsReport({ courses, totalRevenue }) {
   const [sort, setSort] = useState({ key: 'revenue', dir: 'desc' });
 
   const rows = useMemo(() => {
@@ -26,8 +26,11 @@ export default function EarningsReport({ courses }) {
     });
   }, [courses, sort]);
 
-  const totalEarnings = rows.reduce((s, c) => s + (c.revenue || 0), 0);
-  const hasRevenue = rows.some((c) => c.revenue != null);
+  const perCourseSum = rows.reduce((s, c) => s + (c.revenue || 0), 0);
+  const hasPerCourse = rows.some((c) => c.revenue != null);
+  // Grand total from the revenue account; per-course sum once that endpoint lands.
+  const totalEarnings = hasPerCourse ? perCourseSum : totalRevenue;
+  const hasRevenue = totalRevenue != null || hasPerCourse;
 
   function toggle(key) {
     setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }));
@@ -57,9 +60,14 @@ export default function EarningsReport({ courses }) {
 
       {!hasRevenue && (
         <div className="banner warn">
-          ⚠️ <b>Total Earning</b> needs your revenue data, which isn’t in the Udemy API. Run the
-          one-time session step (<code>npm run import:cookies</code> → <code>npm run scrape:revenue</code>)
-          and it fills in here. Course titles and launch dates are live now.
+          ⚠️ <b>Total Earning</b> needs your revenue data. Connect Udemy and run
+          <code>npm run scrape:revenue</code>; it fills in here.
+        </div>
+      )}
+      {hasRevenue && !hasPerCourse && (
+        <div className="banner warn">
+          ✓ Grand total earnings shown above. The <b>per-course</b> breakdown uses a separate
+          Udemy endpoint that isn’t wired up yet — those cells show “—” for now.
         </div>
       )}
 

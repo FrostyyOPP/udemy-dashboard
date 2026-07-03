@@ -156,7 +156,7 @@ export default function App() {
         </button>
       </div>
 
-      {tab === 'earnings' && <EarningsReport courses={courses} />}
+      {tab === 'earnings' && <EarningsReport courses={courses} totalRevenue={totalRevenue} />}
 
       {tab === 'all' && (
       <>
