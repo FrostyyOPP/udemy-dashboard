@@ -163,6 +163,14 @@ app.post('/api/coursera/disconnect', (req, res) => {
   res.json({ connected: false });
 });
 
+// Coursera course list (from the scraped cache).
+app.get('/api/coursera/courses', (req, res) => {
+  const f = join(__dirname, 'coursera-courses-cache.json');
+  if (!existsSync(f)) return res.json({ courses: [], scrapedAt: null });
+  try { res.json(JSON.parse(readFileSync(f, 'utf8'))); }
+  catch { res.json({ courses: [], scrapedAt: null }); }
+});
+
 // Bulk-create coupons. User-triggered write. dryRun:true previews only.
 // Requires a connected session; opens a headed browser to POST to Udemy.
 app.post('/api/coupons/create', (req, res, next) => {
