@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import CourseDetail from './CourseDetail.jsx';
+import EarningsReport from './EarningsReport.jsx';
 
 // Escape a value for CSV: wrap in quotes if it contains comma/quote/newline.
 function csvCell(v) {
@@ -37,6 +38,7 @@ export default function App() {
   const [sort, setSort] = useState({ key: 'num_reviews', dir: 'desc' });
   const [selected, setSelected] = useState(null);
   const [totalRevenue, setTotalRevenue] = useState(null);
+  const [tab, setTab] = useState('all');
 
   useEffect(() => {
     fetch('/api/health')
@@ -143,6 +145,17 @@ export default function App() {
       )}
       {error && <div className="banner err">❌ {error}</div>}
 
+      <div className="viewtabs">
+        <button className={tab === 'all' ? 'active' : ''} onClick={() => setTab('all')}>All Courses</button>
+        <button className={tab === 'earnings' ? 'active' : ''} onClick={() => setTab('earnings')}>
+          Earnings (Published)
+        </button>
+      </div>
+
+      {tab === 'earnings' && <EarningsReport courses={courses} />}
+
+      {tab === 'all' && (
+      <>
       {courses.length > 0 && (
         <div className="kpis">
           <div className="kpi"><span>{courses.length}</span>courses</div>
@@ -237,6 +250,8 @@ export default function App() {
       )}
 
       {selected && <CourseDetail course={selected} onClose={() => setSelected(null)} />}
+      </>
+      )}
     </div>
   );
 }

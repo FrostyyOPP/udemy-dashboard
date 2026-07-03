@@ -74,7 +74,7 @@ app.get('/api/health', (req, res) => {
 // --- Typed routes for the common instructor resources --------------------
 
 const COURSE_FIELDS =
-  '@default,rating,num_reviews,headline,is_published,created,visible_instructors';
+  '@default,rating,num_reviews,headline,is_published,created,published_time,visible_instructors';
 
 // List your taught courses. By default fetches ALL pages (168 is small);
 // pass ?page=N for a single page.
