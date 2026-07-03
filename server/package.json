@@ -16,6 +16,7 @@
     "scrape:coupons": "node scrapeCoupons.js",
     "coursera:courses": "node scrapeCourseraCourses.js",
     "coursera:overview": "node scrapeCourseraOverview.js",
+    "coursera:metrics": "node scrapeCourseraMetrics.js",
     "discover": "node discover.js"
   },
   "dependencies": {

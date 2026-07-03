@@ -179,6 +179,14 @@ app.get('/api/coursera/overview', (req, res) => {
   catch { res.json({ kpis: {}, scrapedAt: null }); }
 });
 
+// Coursera per-course metrics (enrollments/completions/rating).
+app.get('/api/coursera/metrics', (req, res) => {
+  const f = join(__dirname, 'coursera-metrics-cache.json');
+  if (!existsSync(f)) return res.json({ courses: [], scrapedAt: null });
+  try { res.json(JSON.parse(readFileSync(f, 'utf8'))); }
+  catch { res.json({ courses: [], scrapedAt: null }); }
+});
+
 // Bulk-create coupons. User-triggered write. dryRun:true previews only.
 // Requires a connected session; opens a headed browser to POST to Udemy.
 app.post('/api/coupons/create', (req, res, next) => {
