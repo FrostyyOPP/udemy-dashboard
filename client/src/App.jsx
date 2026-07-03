@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import CourseDetail from './CourseDetail.jsx';
 import EarningsReport from './EarningsReport.jsx';
+import ConnectUdemy from './ConnectUdemy.jsx';
 
 // Escape a value for CSV: wrap in quotes if it contains comma/quote/newline.
 function csvCell(v) {
@@ -133,9 +134,12 @@ export default function App() {
 
   return (
     <div className="wrap">
-      <header>
-        <h1>Udemy Instructor Dashboard</h1>
-        <p>Your courses, ratings, and engagement — pulled live from the Instructor API.</p>
+      <header className="apphead">
+        <div>
+          <h1>Udemy Instructor Dashboard</h1>
+          <p>Your courses, ratings, and engagement — pulled live from the Instructor API.</p>
+        </div>
+        <ConnectUdemy onConnected={loadCourses} />
       </header>
 
       {health && !ready && (

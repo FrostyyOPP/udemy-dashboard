@@ -66,6 +66,13 @@ button.ghost:hover:not(:disabled) { border-color: var(--accent); color: #d9b8ff;
 .row { cursor: pointer; }
 .row:hover { background: #20242f; }
 
+.apphead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.conn { font-size: 13px; font-weight: 600; color: var(--good); cursor: pointer; white-space: nowrap; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; }
+.conn:hover { border-color: var(--good); }
+.modal { width: min(560px, 94vw); margin: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; align-self: center; max-height: 90vh; overflow: auto; }
+.drawer-backdrop { align-items: center; }
+.paste { width: 100%; min-height: 120px; background: #000; color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; resize: vertical; }
+
 .viewtabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
 .viewtabs button { background: transparent; color: var(--muted); border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 14px; font-weight: 600; cursor: pointer; }
 .viewtabs button.active { color: var(--text); border-bottom-color: var(--accent); }

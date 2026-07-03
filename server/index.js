@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import express from 'express';
@@ -12,6 +12,25 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // CACHE_FILE can point at a Render persistent disk; defaults to the repo copy.
 const CACHE_FILE = process.env.CACHE_FILE || join(__dirname, 'enrollment-cache.json');
 const REVENUE_FILE = process.env.REVENUE_FILE || join(__dirname, 'revenue-cache.json');
+const AUTH_FILE = join(__dirname, 'udemy-auth.json');
+
+// Convert a Cookie-Editor JSON export into a Playwright session (storageState).
+const sameSiteMap = { no_restriction: 'None', none: 'None', lax: 'Lax', strict: 'Strict' };
+function cookiesToState(list) {
+  const cookies = (Array.isArray(list) ? list : list?.cookies || [])
+    .filter((c) => c && c.name && c.domain)
+    .map((c) => ({
+      name: c.name,
+      value: String(c.value ?? ''),
+      domain: c.domain,
+      path: c.path || '/',
+      httpOnly: Boolean(c.httpOnly),
+      secure: Boolean(c.secure),
+      sameSite: sameSiteMap[String(c.sameSite || '').toLowerCase()] || 'Lax',
+      expires: c.expirationDate ?? c.expires ? Math.floor(Number(c.expirationDate ?? c.expires)) : -1,
+    }));
+  return { cookies, origins: [] };
+}
 
 // Read scraped enrollment counts (fresh each call so a re-scrape shows up).
 function enrollmentCache() {
@@ -69,6 +88,42 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
 // --- Health / auth check -------------------------------------------------
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, hasApiKey: Boolean(process.env.UDEMY_API_KEY) });
+});
+
+// --- Udemy account connection (session) ----------------------------------
+// Connection status: is a session saved, and which scraped datasets exist?
+app.get('/api/connection', (req, res) => {
+  res.json({
+    connected: existsSync(AUTH_FILE),
+    data: {
+      enrollment: existsSync(CACHE_FILE),
+      revenue: existsSync(REVENUE_FILE),
+      captions: existsSync(join(__dirname, 'caption-cache.json')),
+    },
+  });
+});
+
+// Connect by submitting a Cookie-Editor export of udemy.com cookies.
+app.post('/api/connect', (req, res) => {
+  const state = cookiesToState(req.body?.cookies ?? req.body);
+  const names = state.cookies.map((c) => c.name);
+  // Sanity: must look like a logged-in Udemy session.
+  const isUdemy = state.cookies.some((c) => /udemy\.com$/.test(c.domain));
+  const loggedIn = names.includes('dj_session_id') || names.includes('ud_cache_logged_in');
+  if (!state.cookies.length || !isUdemy || !loggedIn) {
+    return res.status(400).json({
+      error: 'That does not look like a logged-in udemy.com cookie export. Export from udemy.com while signed in.',
+      cookieCount: state.cookies.length,
+    });
+  }
+  writeFileSync(AUTH_FILE, JSON.stringify(state, null, 2));
+  res.json({ connected: true, cookieCount: state.cookies.length });
+});
+
+// Disconnect: remove the saved session.
+app.post('/api/disconnect', (req, res) => {
+  try { if (existsSync(AUTH_FILE)) unlinkSync(AUTH_FILE); } catch {}
+  res.json({ connected: false });
 });
 
 // --- Typed routes for the common instructor resources --------------------
