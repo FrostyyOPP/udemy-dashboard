@@ -21,3 +21,4 @@ discover-output.json
 .chromium-profile/
 .cdp-profile/
 transcript-cache.json
+last-update.json

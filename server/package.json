@@ -18,7 +18,8 @@
     "coursera:courses": "node scrapeCourseraCourses.js",
     "coursera:overview": "node scrapeCourseraOverview.js",
     "coursera:metrics": "node scrapeCourseraMetrics.js",
-    "discover": "node discover.js"
+    "discover": "node discover.js",
+    "update": "node update-all.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
