@@ -277,7 +277,7 @@ export default function App() {
     <div className="wrap">
       <header className="apphead">
         <div>
-          <h1>Instructor Dashboard</h1>
+          <h1>Distribution Dashboard</h1>
           <p>Your courses, ratings, earnings, and coupons across platforms.</p>
           <div className="platsw">
             <button className={platform === 'udemy' ? 'active' : ''} onClick={() => setPlatform('udemy')}>Udemy</button>
