@@ -113,6 +113,28 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, hasApiKey: Boolean(process.env.UDEMY_API_KEY) });
 });
 
+// When was the data last refreshed? Newest timestamp across all caches + the
+// last scheduled `npm run update` run.
+app.get('/api/last-update', (req, res) => {
+  const files = [
+    'revenue-cache.json', 'coupon-cache.json', 'caption-cache.json', 'enrollment-cache.json',
+    'coursera-metrics-cache.json', 'coursera-overview-cache.json',
+  ];
+  let newest = null;
+  for (const f of files) {
+    const p = join(__dirname, f);
+    if (!existsSync(p)) continue;
+    try {
+      const t = JSON.parse(readFileSync(p, 'utf8')).scrapedAt;
+      if (t && (!newest || new Date(t) > new Date(newest))) newest = t;
+    } catch {}
+  }
+  let run = null;
+  const lu = join(__dirname, 'last-update.json');
+  if (existsSync(lu)) { try { run = JSON.parse(readFileSync(lu, 'utf8')); } catch {} }
+  res.json({ updatedAt: newest, lastRun: run });
+});
+
 // --- Udemy account connection (session) ----------------------------------
 // Connection status: is a session saved, and which scraped datasets exist?
 app.get('/api/connection', (req, res) => {

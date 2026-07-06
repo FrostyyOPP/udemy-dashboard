@@ -11,6 +11,16 @@ function csvCell(v) {
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+// Relative "time ago" for the freshness indicator.
+function relTime(iso) {
+  if (!iso) return null;
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 90) return 'just now';
+  const m = s / 60; if (m < 60) return `${Math.round(m)}m ago`;
+  const h = m / 60; if (h < 36) return `${Math.round(h)}h ago`;
+  return `${Math.round(h / 24)}d ago`;
+}
+
 // ── Domain classification ────────────────────────────────────────────────────
 const DOMAIN_RULES = [
   { domain: 'Finance & Capital Markets', keywords: [
@@ -148,12 +158,17 @@ export default function App() {
   const [domainFilter, setDomainFilter] = useState('All');
   const [tab, setTab] = useState('all');
   const [platform, setPlatform] = useState('udemy');
+  const [updatedAt, setUpdatedAt] = useState(null);
 
   useEffect(() => {
     fetch('/api/health')
       .then((r) => r.json())
       .then(setHealth)
       .catch(() => setHealth({ ok: false }));
+    fetch('/api/last-update')
+      .then((r) => r.json())
+      .then((d) => setUpdatedAt(d.updatedAt))
+      .catch(() => {});
   }, []);
 
   async function loadCourses() {
@@ -269,7 +284,14 @@ export default function App() {
             <button className={platform === 'coursera' ? 'active' : ''} onClick={() => setPlatform('coursera')}>Coursera</button>
           </div>
         </div>
-        {platform === 'udemy' ? <ConnectUdemy onConnected={loadCourses} /> : <ConnectCoursera />}
+        <div className="head-right">
+          {updatedAt && (
+            <span className="freshness" title={`Data refreshed ${new Date(updatedAt).toLocaleString()}`}>
+              Data updated {relTime(updatedAt)}
+            </span>
+          )}
+          {platform === 'udemy' ? <ConnectUdemy onConnected={loadCourses} /> : <ConnectCoursera />}
+        </div>
       </header>
 
       {platform === 'coursera' && <CourseraPanel />}

@@ -90,6 +90,14 @@ header h1, .apphead h1 {
 }
 header p, .apphead p { margin: 0; color: var(--ink-soft); font-size: 14px; }
 
+.head-right { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: flex-end; }
+.freshness {
+  font-family: var(--font-mono); font-size: 11px; color: var(--ink-muted);
+  letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 7px;
+}
+.freshness::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--sw-emerald); }
+
 /* ---------- Platform switcher ---------- */
 .platsw {
   display: inline-flex; gap: 4px; margin-top: 12px;
