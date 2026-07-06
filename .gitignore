@@ -22,3 +22,4 @@ discover-output.json
 .cdp-profile/
 transcript-cache.json
 last-update.json
+switch-to-ngrok.sh
