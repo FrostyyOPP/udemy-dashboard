@@ -9,6 +9,7 @@
     "dev": "node --watch index.js",
     "test:auth": "node testAuth.js",
     "scrape:enrollment": "node scrapeEnrollment.js",
+    "scrape:transcripts": "node scrapeTranscripts.js",
     "auth:udemy": "node captureAuth.js",
     "import:cookies": "node importCookies.js",
     "scrape:revenue": "node scrapeRevenue.js",

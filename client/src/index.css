@@ -70,6 +70,49 @@ button.ghost:hover:not(:disabled) { border-color: var(--accent); color: #d9b8ff;
 .mono:hover { color: var(--text); }
 .tag { display:inline-block; padding:2px 8px; border-radius:999px; background:#23262f; color:var(--muted); font-size:12px; }
 .tag.good { background: #10331f; color: var(--good); }
+.tag.warn { background: #2a210d; color: var(--warn); }
+.tag.err  { background: #2a1212; color: #f87171; }
+
+/* SME cell — truncate long lists, full text on hover */
+.sme-cell { max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; color: var(--muted); }
+
+/* Domain select filter */
+.domain-select {
+  background: var(--card); border: 1px solid var(--border); color: var(--text);
+  padding: 9px 12px; border-radius: 8px; font-size: 14px; cursor: pointer;
+}
+
+/* Course title column — don't truncate too aggressively */
+.course-title { min-width: 260px; max-width: 360px; }
+
+/* Transcript cell */
+.transcript-cell { max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--muted); }
+
+/* Domain tag colours */
+.domain-tag { white-space: nowrap; }
+.domain-finance  { background: #10331f; color: #4ade80; }
+.domain-ai       { background: #1a1040; color: #a78bfa; }
+.domain-cybersecurity { background: #1a0d20; color: #e879f9; }
+.domain-healthcare   { background: #0d1f33; color: #60a5fa; }
+.domain-data     { background: #1a1200; color: #fbbf24; }
+.domain-cloud    { background: #0d1a1a; color: #34d399; }
+.domain-business { background: #1a1000; color: #fb923c; }
+.domain-sales    { background: #1a0a00; color: #f97316; }
+.domain-communication { background: #0a0f1a; color: #94a3b8; }
+.domain-product  { background: #1a0a1a; color: #f0abfc; }
+.domain-hr       { background: #0f1a10; color: #86efac; }
+.domain-hospitality  { background: #1a1010; color: #fca5a5; }
+.domain-other    { background: #1a1a1a; color: #9aa0ad; }
+
+/* Instructor panel in drawer */
+.instructor-panel { display: flex; flex-direction: column; gap: 12px; padding: 4px 0; }
+.info-grid { display: flex; flex-direction: column; gap: 10px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+.info-row { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.info-label { font-size: 13px; color: var(--muted); font-weight: 600; min-width: 150px; padding-top: 2px; flex-shrink: 0; }
+.section-divider { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); padding: 8px 0 4px; border-top: 1px solid var(--border); margin-top: 4px; }
+
+/* Wider table */
+.wrap { max-width: 1500px; margin: 0 auto; padding: 32px 24px; }
 
 .empty { color: var(--muted); padding: 40px 0; text-align: center; }
 

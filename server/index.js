@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import express from 'express';
@@ -12,6 +12,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // CACHE_FILE can point at a Render persistent disk; defaults to the repo copy.
 const CACHE_FILE = process.env.CACHE_FILE || join(__dirname, 'enrollment-cache.json');
 const REVENUE_FILE = process.env.REVENUE_FILE || join(__dirname, 'revenue-cache.json');
+const TRANSCRIPT_FILE = process.env.TRANSCRIPT_FILE || join(__dirname, 'transcript-cache.json');
 
 // Read scraped enrollment counts (fresh each call so a re-scrape shows up).
 function enrollmentCache() {
@@ -20,6 +21,16 @@ function enrollmentCache() {
     return JSON.parse(readFileSync(CACHE_FILE, 'utf8'));
   } catch {
     return { counts: {}, scrapedAt: null };
+  }
+}
+
+// Read scraped transcript languages per course.
+function transcriptCache() {
+  if (!existsSync(TRANSCRIPT_FILE)) return { transcripts: {}, scrapedAt: null };
+  try {
+    return JSON.parse(readFileSync(TRANSCRIPT_FILE, 'utf8'));
+  } catch {
+    return { transcripts: {}, scrapedAt: null };
   }
 }
 
@@ -70,10 +81,12 @@ const COURSE_FIELDS =
 app.get('/api/courses', wrap(async (req, res) => {
   const { counts, scrapedAt } = enrollmentCache();
   const { perCourse, total: totalRevenue, currency } = revenueCache();
+  const { transcripts } = transcriptCache();
   const enrich = (c) => ({
     ...c,
     num_subscribers: counts[c.id] ?? null,
     revenue: perCourse[c.id] ?? null,
+    transcript_languages: transcripts[c.id] ?? null,
   });
 
   if (req.query.page) {
@@ -132,6 +145,69 @@ app.get('/api/questions', wrap(async (req, res) => {
   res.json(data);
 }));
 
+// --- Transcript data receiver — bookmarklet uses GET (avoids HTTPS→HTTP mixed-content block) ---
+// /api/transcripts/save?slug=commercial-credit-analysis&lang=English&lang=Spanish
+app.get('/api/transcripts/save', wrap(async (req, res) => {
+  const slug = req.query.slug;
+  const langs = req.query.lang ? (Array.isArray(req.query.lang) ? req.query.lang : [req.query.lang]) : [];
+  req.body = { slug, languages: langs };
+  // fall through to shared handler below
+  return saveTranscript(req, res);
+}));
+
+async function saveTranscript(req, res) {
+  const { courseId, slug, languages } = req.body || {};
+  if (!courseId && !slug) return res.status(400).json({ error: 'courseId or slug required' });
+  if (!Array.isArray(languages)) return res.status(400).json({ error: 'languages must be an array' });
+
+  let cache = { scrapedAt: new Date().toISOString(), transcripts: {} };
+  if (existsSync(TRANSCRIPT_FILE)) {
+    try { cache = JSON.parse(readFileSync(TRANSCRIPT_FILE, 'utf8')); } catch {}
+  }
+  let resolvedId = courseId;
+  if (!resolvedId && slug) {
+    let page = 1;
+    outer: while (page < 10) {
+      const data = await udemyGet('/taught-courses/courses/', {
+        page, page_size: 100, 'fields[course]': '@default,published_title,is_published'
+      }).catch(() => ({ results: [], next: null }));
+      const match = (data.results || []).find(c => c.published_title === slug);
+      if (match) { resolvedId = match.id; break outer; }
+      if (!data.next) break;
+      page++;
+    }
+  }
+  if (!resolvedId) return res.status(404).json({ error: 'Course not found' });
+  cache.transcripts[resolvedId] = languages;
+  cache.scrapedAt = new Date().toISOString();
+  writeFileSync(TRANSCRIPT_FILE, JSON.stringify(cache, null, 2));
+  const isHtml = (req.headers.accept || '').includes('text/html');
+  if (isHtml) {
+    const msg = languages.length ? languages.join(', ') : '(no captions on this course)';
+    return res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Saved</title>
+<style>body{font-family:system-ui;background:#0f1117;color:#e6e8ee;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column;gap:12px;}
+h1{color:#4ade80;font-size:28px;margin:0;}p{color:#9aa0ad;margin:0;}</style></head>
+<body><h1>✓ Saved</h1><p>${slug}</p><p style="color:#c79bff">${msg}</p>
+<p style="margin-top:20px;font-size:13px">You can close this tab.</p>
+<script>setTimeout(()=>window.close(),2000);</script></body></html>`);
+  }
+  res.json({ ok: true, courseId: resolvedId, languages });
+}
+
+// --- Transcript data receiver — bookmarklet POSTs here -------------------
+// Accepts { courseId, slug, languages: string[] } and saves to transcript-cache.json
+app.post('/api/transcripts', express.json(), wrap(async (req, res) => {
+  return saveTranscript(req, res);
+}));
+
+// Transcript status — how many courses have been captured
+app.get('/api/transcripts/status', wrap(async (req, res) => {
+  const { transcripts, scrapedAt } = transcriptCache();
+  const captured = Object.keys(transcripts).length;
+  const withData = Object.values(transcripts).filter(v => Array.isArray(v) && v.length > 0).length;
+  res.json({ captured, withData, scrapedAt });
+}));
+
 // --- Generic passthrough -------------------------------------------------
 // Hit ANY instructor endpoint without writing new code, e.g.:
 //   /api/udemy/taught-courses/courses/?page=1
@@ -140,6 +216,13 @@ app.get('/api/udemy/*', wrap(async (req, res) => {
   const data = await udemyGet(path, req.query);
   res.json(data);
 }));
+
+// Serve the bookmarklet installer page
+app.get('/bookmarklet', (req, res) => {
+  const file = join(__dirname, 'bookmarklet.html');
+  if (existsSync(file)) res.sendFile(file);
+  else res.status(404).send('bookmarklet.html not found');
+});
 
 // --- Serve the built frontend (production) -------------------------------
 // In prod the React build is served from the same origin, so the client's
