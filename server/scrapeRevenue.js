@@ -1,109 +1,108 @@
-// Pulls revenue from the LOGGED-IN instructor dashboard using the saved
-// session (run captureAuth.js first). Captures the revenue page's network
-// JSON, dumps candidates for discovery, and writes revenue-cache.json.
-// Run: npm run scrape:revenue        (all files gitignored)
+// Pulls instructor earnings (lifetime total, monthly series, AND per-course)
+// using the connected session + a HEADED browser (Cloudflare blocks headless on
+// api-2.0). Writes revenue-cache.json. Run: npm run scrape:revenue
 import { writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { chromium } from 'playwright';
+import { udemyGet } from './udemyClient.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const AUTH_FILE = join(__dirname, 'udemy-auth.json');
 const CACHE_FILE = join(__dirname, 'revenue-cache.json');
-const DISCOVERY_FILE = join(__dirname, 'revenue-discovery.json');
+const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 if (!existsSync(AUTH_FILE)) {
-  console.error('❌ No session found. Run `npm run auth:udemy` first and log in.');
+  console.error('❌ Not connected. Use "Connect Udemy" in the dashboard first.');
   process.exit(1);
 }
 
-// Candidate pages the revenue report may live behind.
-const PAGES = [
-  'https://www.udemy.com/instructor/performance/revenue/',
-  'https://www.udemy.com/instructor/revenue-report/',
-  'https://www.udemy.com/instructor/performance/overview/',
-];
-
-const browser = await chromium.launch({ headless: true });
-const ctx = await browser.newContext({ storageState: AUTH_FILE });
+const browser = await chromium.launch({
+  headless: false,
+  args: ['--disable-blink-features=AutomationControlled'],
+  ignoreDefaultArgs: ['--enable-automation'],
+});
+const ctx = await browser.newContext({ storageState: AUTH_FILE, userAgent: UA });
+await ctx.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => undefined }));
 const page = await ctx.newPage();
 
-// Capture JSON responses that look money-related for discovery.
-const captured = [];
-page.on('response', async (res) => {
-  try {
-    const url = res.url();
-    const ct = res.headers()['content-type'] || '';
-    if (!ct.includes('json')) return;
-    if (!/revenue|earning|amount|stat|performance|course/i.test(url)) return;
-    const body = await res.json().catch(() => null);
-    if (!body) return;
-    const text = JSON.stringify(body);
-    if (/revenue|amount|earning/i.test(text)) {
-      captured.push({ url, sample: text.slice(0, 2000) });
-    }
-  } catch {}
+let shareHolderId = null;
+page.on('response', (res) => {
+  const m = res.url().match(/\/api-2\.0\/share-holders\/(?:v[\d.]+\/)?(\d+)\//);
+  if (m && !shareHolderId) shareHolderId = m[1];
 });
 
-let loggedIn = false;
-for (const url of PAGES) {
-  await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 }).catch(() => {});
-  const onLogin = /\/join\/login/.test(page.url());
-  if (!onLogin) loggedIn = true;
-  await page.waitForTimeout(2500); // let XHRs fire
-}
-
-if (!loggedIn) {
-  console.error('❌ Session looks logged out (redirected to login). Re-run `npm run auth:udemy`.');
+console.log('Opening the revenue page…');
+await page.goto('https://www.udemy.com/instructor/performance/revenue/', { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+await sleep(5000);
+if (!shareHolderId) {
+  console.error('❌ Could not detect your revenue account id. Re-connect and retry.');
   await browser.close();
   process.exit(1);
 }
+console.log('Revenue account id:', shareHolderId);
 
-writeFileSync(DISCOVERY_FILE, JSON.stringify(captured, null, 2));
-console.log(`Captured ${captured.length} money-related JSON responses → ${DISCOVERY_FILE}`);
-
-// Best-effort parse: find a payload with per-course revenue entries.
-let perCourse = {};
-let total = null;
-for (const c of captured) {
-  try {
-    const j = JSON.parse(c.sample.length < 2000 ? c.sample : '{}');
-    // (full parsing happens below against the live body)
-  } catch {}
-}
-// Re-fetch the most promising endpoint fully (sample was truncated for the dump).
-const best = captured.find((c) => /revenue/i.test(c.url) && /results|courses|\[/.test(c.sample));
-if (best) {
-  const body = await page.evaluate(async (u) => {
-    const r = await fetch(u, { credentials: 'include' });
-    return r.ok ? r.json() : null;
-  }, best.url).catch(() => null);
-  if (body) {
-    const rows = body.results || body.courses || (Array.isArray(body) ? body : []);
-    for (const row of rows) {
-      const amt = row.amount ?? row.revenue ?? row.total ?? row.earnings;
-      const id = row.course_id ?? row.id ?? row.course?.id;
-      if (id != null && amt != null) perCourse[String(id)] = Number(amt);
-    }
-    total = body.total ?? body.total_amount ?? Object.values(perCourse).reduce((s, n) => s + n, 0);
+async function apiGet(url) {
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+  for (let i = 0; i < 8; i++) {
+    const body = await page.evaluate(() => document.body.innerText).catch(() => '');
+    if (body.trim().startsWith('{') || body.trim().startsWith('[')) { try { return JSON.parse(body); } catch {} }
+    await sleep(1500);
   }
+  return null;
 }
 
+// 1) Lifetime total + monthly series.
+const total = await apiGet(`https://www.udemy.com/api-2.0/share-holders/v2.0/${shareHolderId}/total/`);
+const totalAmount = total?.amount?.amount ?? null;
+const currency = (total?.amount?.currency || 'usd').toUpperCase();
+const monthly = (total?.items || []).map((it) => ({ month: it.identifier, amount: it.amount?.amount ?? 0 }));
+
+// 2) Per-course lifetime earnings → { numericId: amount }.
+const perNum = {};
+const byCourse = await apiGet(`https://www.udemy.com/api-2.0/share-holders/v1.0/${shareHolderId}/total/?aggregate=course`);
+for (const it of byCourse?.items || []) {
+  const m = String(it.identifier).match(/course:(\d+)/);
+  if (m) perNum[m[1]] = it.amount?.amount ?? 0;
+}
+
+// 3) numericId → slug (api-2.0 taught-courses), paginated.
+const numToSlug = {};
+let url = 'https://www.udemy.com/api-2.0/users/me/taught-courses/?page_size=100&fields[course]=published_title';
+while (url) {
+  const d = await apiGet(url);
+  if (!d?.results) break;
+  for (const c of d.results) if (c.id && c.published_title) numToSlug[c.id] = c.published_title;
+  url = d.next || null;
+  await sleep(800);
+}
 await browser.close();
 
-const out = {
-  scrapedAt: new Date().toISOString(),
-  currency: 'USD',
-  total,
-  perCourse,
-  note: 'Best-effort. If perCourse is empty, inspect revenue-discovery.json to find the right payload.',
-};
-writeFileSync(CACHE_FILE, JSON.stringify(out, null, 2));
-
-if (Object.keys(perCourse).length) {
-  console.log(`✅ Parsed revenue for ${Object.keys(perCourse).length} courses. Total: ${total}`);
-} else {
-  console.log('⚠️  Could not auto-parse per-course revenue.');
-  console.log(`   Open ${DISCOVERY_FILE} and share it — I will write the exact parser.`);
+// 4) slug → instructor-API course id (the ids the dashboard uses).
+const slugToId = {};
+let p2 = 1;
+while (true) {
+  const d = await udemyGet('/taught-courses/courses/', { page: p2, page_size: 100, 'fields[course]': '@default,published_title' });
+  for (const c of d.results || []) slugToId[c.published_title] = c.id;
+  if (!d.next) break;
+  p2 += 1;
 }
-console.log(`   Saved ${CACHE_FILE}`);
+
+// Combine: numericId → slug → instructor id → amount.
+const perCourse = {};
+for (const [numId, amount] of Object.entries(perNum)) {
+  const slug = numToSlug[numId];
+  const id = slug && slugToId[slug];
+  if (id) perCourse[id] = amount;
+}
+
+writeFileSync(
+  CACHE_FILE,
+  JSON.stringify({ scrapedAt: new Date().toISOString(), currency, total: totalAmount, monthly, perCourse }, null, 2)
+);
+
+const mapped = Object.keys(perCourse).length;
+const earning = Object.values(perCourse).filter((v) => v > 0).length;
+console.log(`✅ Total ${currency} ${totalAmount?.toLocaleString()} · per-course mapped for ${mapped} courses (${earning} earning) → revenue-cache.json`);
+console.log('   Refresh the dashboard — the Earnings report now has per-course Total Earning.');

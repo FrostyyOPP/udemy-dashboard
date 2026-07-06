@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import CourseDetail from './CourseDetail.jsx';
+import EarningsReport from './EarningsReport.jsx';
+import ConnectUdemy from './ConnectUdemy.jsx';
+import ConnectCoursera from './ConnectCoursera.jsx';
+import CourseraPanel from './CourseraPanel.jsx';
+import CreateCoupons from './CreateCoupons.jsx';
 
 function csvCell(v) {
   const s = v == null ? '' : String(v);
@@ -96,7 +101,6 @@ function classifyDomain(title = '') {
 
 const FINANCE_DOMAINS = new Set(['Finance & Capital Markets']);
 
-// ── Instructor helpers ───────────────────────────────────────────────────────
 function instructorInfo(course) {
   const instructors = course.visible_instructors || [];
   const names = instructors.map((i) => i.title || i.name || '');
@@ -108,7 +112,12 @@ function instructorInfo(course) {
   return { hasPaul, hasGlobecon, sme };
 }
 
-// ── Formatting ───────────────────────────────────────────────────────────────
+// caption_locales may be strings ("English") or objects ({title/locale}). Normalize.
+const capNames = (list) =>
+  !Array.isArray(list)
+    ? []
+    : list.map((x) => (typeof x === 'string' ? x : x?.title || x?.locale || '')).filter(Boolean);
+
 const usd = (n) =>
   n == null ? '—' : n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 
@@ -116,16 +125,17 @@ const COLUMNS = [
   { key: 'title',           label: 'Course',            sortable: true,  str: true },
   { key: 'domain',          label: 'Domain',            sortable: true,  str: true },
   { key: 'num_reviews',     label: 'Total Ratings',     sortable: true,  num: true },
-  { key: 'num_subscribers', label: 'Total Enrollments', sortable: true,  num: true },
+  { key: 'num_subscribers', label: 'Enrollments',       sortable: true,  num: true },
   { key: 'above2k',         label: 'Enroll > 2k',       sortable: true,  str: true },
   { key: 'rating',          label: 'Avg Rating',        sortable: true,  num: true },
-  { key: 'transcript_languages', label: 'Transcripts',  sortable: false },
+  { key: 'revenue',         label: 'Revenue',           sortable: true,  num: true },
+  { key: 'caption_locales', label: 'Captions',          sortable: false },
+  { key: 'coupons',         label: 'Coupons',           sortable: true,  num: true },
   { key: 'paul',            label: 'Paul',              sortable: false },
   { key: 'globecon',        label: 'Globecon',          sortable: false },
   { key: 'sme',             label: 'SME',               sortable: false },
 ];
 
-// ── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const [health, setHealth] = useState(null);
   const [courses, setCourses] = useState([]);
@@ -136,6 +146,8 @@ export default function App() {
   const [selected, setSelected] = useState(null);
   const [totalRevenue, setTotalRevenue] = useState(null);
   const [domainFilter, setDomainFilter] = useState('All');
+  const [tab, setTab] = useState('all');
+  const [platform, setPlatform] = useState('udemy');
 
   useEffect(() => {
     fetch('/api/health')
@@ -151,7 +163,6 @@ export default function App() {
       const res = await fetch('/api/courses');
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      // Exclude drafts right at load time
       setCourses((data.results || []).filter((c) => c.is_published));
       setTotalRevenue(data.total_revenue ?? null);
     } catch (e) {
@@ -166,7 +177,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [health?.hasApiKey]);
 
-  // Enrich published courses with computed fields.
   const enriched = useMemo(() =>
     courses.map((c) => {
       const domain = classifyDomain(c.title);
@@ -194,6 +204,8 @@ export default function App() {
     return [...rows].sort((a, b) => {
       let av = a[key], bv = b[key];
       if (col?.str) return mul * String(av || '').localeCompare(String(bv || ''));
+      if (Array.isArray(av)) av = av.length;
+      if (Array.isArray(bv)) bv = bv.length;
       av = Number(av) || 0;
       bv = Number(bv) || 0;
       return mul * (av - bv);
@@ -207,7 +219,7 @@ export default function App() {
   }
 
   function exportCsv() {
-    const headers = ['Title','Domain','Total Ratings','Total Enrollments','Enroll > 2k','Avg Rating','Transcripts','Paul','Globecon','SME','URL'];
+    const headers = ['Title','Domain','Total Ratings','Total Enrollments','Enroll > 2k','Avg Rating','Revenue','Captions','Coupons','Paul','Globecon','SME','URL'];
     const rows = view.map((c) => [
       c.title,
       c.domain,
@@ -215,7 +227,9 @@ export default function App() {
       c.num_subscribers ?? '',
       c.above2k,
       c.rating ? Number(c.rating).toFixed(2) : '',
-      Array.isArray(c.transcript_languages) ? c.transcript_languages.join('; ') : (c.transcript_languages ?? ''),
+      c.revenue ?? '',
+      capNames(c.caption_locales).join('; '),
+      Array.isArray(c.coupons) ? c.coupons.length : '',
       c.hasPaul ? 'Yes' : 'No',
       c.isFinance ? (c.hasGlobecon ? 'Yes' : 'No') : 'N/A',
       c.sme?.join('; ') || '',
@@ -234,7 +248,8 @@ export default function App() {
   const ready = health?.hasApiKey;
   const totalReviews = courses.reduce((s, c) => s + (c.num_reviews || 0), 0);
   const totalStudents = courses.reduce((s, c) => s + (c.num_subscribers || 0), 0);
-  const withTranscripts = enriched.filter((c) => Array.isArray(c.transcript_languages) && c.transcript_languages.length > 0).length;
+  const withPaul = enriched.filter((c) => c.hasPaul).length;
+  const financeWithoutGlobecon = enriched.filter((c) => c.isFinance && !c.hasGlobecon).length;
   const avgRating = (() => {
     const rated = courses.filter((c) => c.num_reviews > 0 && c.rating);
     if (!rated.length) return null;
@@ -242,16 +257,25 @@ export default function App() {
     const n = rated.reduce((s, c) => s + c.num_reviews, 0);
     return (w / n).toFixed(2);
   })();
-  const withPaul = enriched.filter((c) => c.hasPaul).length;
-  const financeWithoutGlobecon = enriched.filter((c) => c.isFinance && !c.hasGlobecon).length;
 
   return (
     <div className="wrap">
-      <header>
-        <h1>Udemy Instructor Dashboard</h1>
-        <p>Published courses only · ratings, enrollments, transcripts and instructor status — live from the API.</p>
+      <header className="apphead">
+        <div>
+          <h1>Instructor Dashboard</h1>
+          <p>Your courses, ratings, earnings, and coupons across platforms.</p>
+          <div className="platsw">
+            <button className={platform === 'udemy' ? 'active' : ''} onClick={() => setPlatform('udemy')}>Udemy</button>
+            <button className={platform === 'coursera' ? 'active' : ''} onClick={() => setPlatform('coursera')}>Coursera</button>
+          </div>
+        </div>
+        {platform === 'udemy' ? <ConnectUdemy onConnected={loadCourses} /> : <ConnectCoursera />}
       </header>
 
+      {platform === 'coursera' && <CourseraPanel />}
+
+      {platform === 'udemy' && (
+      <>
       {health && !ready && (
         <div className="banner warn">
           ⚠️ Missing <code>UDEMY_API_KEY</code> in <code>server/.env</code>. Add it and restart the backend.
@@ -259,15 +283,23 @@ export default function App() {
       )}
       {error && <div className="banner err">❌ {error}</div>}
 
+      <div className="viewtabs">
+        <button className={tab === 'all' ? 'active' : ''} onClick={() => setTab('all')}>All Courses</button>
+        <button className={tab === 'earnings' ? 'active' : ''} onClick={() => setTab('earnings')}>
+          Earnings (Published)
+        </button>
+      </div>
+
+      {tab === 'earnings' && <EarningsReport courses={courses} totalRevenue={totalRevenue} />}
+
+      {tab === 'all' && (
+      <>
       {courses.length > 0 && (
         <div className="kpis">
           <div className="kpi"><span>{courses.length}</span>published courses</div>
           <div className="kpi"><span>{totalReviews.toLocaleString()}</span>total ratings</div>
           <div className="kpi"><span>{totalStudents ? totalStudents.toLocaleString() : '—'}</span>total enrollments</div>
           <div className="kpi"><span>{avgRating ?? '—'}</span>avg rating ★</div>
-          <div className="kpi" title="Courses where transcript scraper has run">
-            <span>{withTranscripts > 0 ? withTranscripts : '—'}</span>with transcripts
-          </div>
           {totalRevenue != null && (
             <div className="kpi"><span>{usd(totalRevenue)}</span>total revenue</div>
           )}
@@ -301,10 +333,7 @@ export default function App() {
         <button className="ghost" onClick={exportCsv} disabled={view.length === 0}>
           ⬇ Export CSV
         </button>
-        <a href="http://localhost:5055/bookmarklet" target="_blank" rel="noreferrer"
-           style={{ fontSize: 13, color: '#c79bff', textDecoration: 'none', whiteSpace: 'nowrap' }}>
-          📎 Caption Tool
-        </a>
+        <CreateCoupons courses={courses} onDone={loadCourses} />
         <span className="muted">{view.length} shown</span>
       </div>
 
@@ -339,7 +368,7 @@ export default function App() {
                 {/* Total Ratings */}
                 <td style={{ textAlign: 'right' }}>{(c.num_reviews ?? 0).toLocaleString()}</td>
 
-                {/* Total Enrollments */}
+                {/* Enrollments */}
                 <td style={{ textAlign: 'right' }}>
                   {c.num_subscribers != null ? c.num_subscribers.toLocaleString() : <span className="muted">—</span>}
                 </td>
@@ -358,13 +387,24 @@ export default function App() {
                   {c.rating ? Number(c.rating).toFixed(2) : '—'}
                 </td>
 
-                {/* Transcripts */}
+                {/* Revenue */}
+                <td style={{ textAlign: 'right' }}>{usd(c.revenue)}</td>
+
+                {/* Captions */}
                 <td className="transcript-cell">
-                  {Array.isArray(c.transcript_languages) && c.transcript_languages.length > 0
-                    ? <span title={c.transcript_languages.join(', ')}>{c.transcript_languages.join(', ')}</span>
-                    : c.transcript_languages === null
-                      ? <span className="muted">pending</span>
-                      : <span className="muted">none</span>}
+                  {capNames(c.caption_locales).length > 0 ? (
+                    <span title={capNames(c.caption_locales).join(', ')}>
+                      {capNames(c.caption_locales).slice(0, 3).join(', ')}
+                      {capNames(c.caption_locales).length > 3 ? ` +${capNames(c.caption_locales).length - 3}` : ''}
+                    </span>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
+
+                {/* Coupons */}
+                <td style={{ textAlign: 'right' }}>
+                  {Array.isArray(c.coupons) ? (c.coupons.length || '0') : <span className="muted">—</span>}
                 </td>
 
                 {/* Paul */}
@@ -396,6 +436,10 @@ export default function App() {
       )}
 
       {selected && <CourseDetail course={selected} onClose={() => setSelected(null)} />}
+      </>
+      )}
+      </>
+      )}
     </div>
   );
 }

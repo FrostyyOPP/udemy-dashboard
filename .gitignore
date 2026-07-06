@@ -10,8 +10,12 @@ dist/
 enrollment-cache.json
 udemy-auth.json
 udemy-cookies.json
+coursera-auth.json
+coursera-cookies.json
+coursera-*-cache.json
 revenue-cache.json
 revenue-discovery.json
+caption-cache.json
 coupon-cache.json
 discover-output.json
 .chromium-profile/

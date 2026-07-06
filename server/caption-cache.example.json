@@ -1,0 +1,7 @@
+{
+  "scrapedAt": "2026-01-01T00:00:00.000Z",
+  "perCourse": {
+    "x01ExampleCourseIdAAAAAAAAA==": ["English", "Spanish", "Hindi"],
+    "x01ExampleCourseIdBBBBBBBBB==": ["English"]
+  }
+}

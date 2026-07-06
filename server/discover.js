@@ -27,7 +27,7 @@ page.on('response', async (res) => {
     const url = res.url();
     const ct = res.headers()['content-type'] || '';
     if (!ct.includes('json')) return;
-    if (!/coupon|promo|discount|revenue|earning|amount|course|instructor|stat/i.test(url)) return;
+    if (!/coupon|promo|discount|revenue|earning|amount|course|instructor|stat|caption|locale|subtitle/i.test(url)) return;
     const text = await res.text().catch(() => '');
     if (!text) return;
     captures.push({ url, status: res.status(), sample: text.slice(0, 3000) });

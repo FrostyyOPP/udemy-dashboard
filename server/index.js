@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import express from 'express';
@@ -12,7 +12,26 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // CACHE_FILE can point at a Render persistent disk; defaults to the repo copy.
 const CACHE_FILE = process.env.CACHE_FILE || join(__dirname, 'enrollment-cache.json');
 const REVENUE_FILE = process.env.REVENUE_FILE || join(__dirname, 'revenue-cache.json');
-const TRANSCRIPT_FILE = process.env.TRANSCRIPT_FILE || join(__dirname, 'transcript-cache.json');
+const AUTH_FILE = join(__dirname, 'udemy-auth.json');
+const COURSERA_AUTH_FILE = join(__dirname, 'coursera-auth.json');
+
+// Convert a Cookie-Editor JSON export into a Playwright session (storageState).
+const sameSiteMap = { no_restriction: 'None', none: 'None', lax: 'Lax', strict: 'Strict' };
+function cookiesToState(list) {
+  const cookies = (Array.isArray(list) ? list : list?.cookies || [])
+    .filter((c) => c && c.name && c.domain)
+    .map((c) => ({
+      name: c.name,
+      value: String(c.value ?? ''),
+      domain: c.domain,
+      path: c.path || '/',
+      httpOnly: Boolean(c.httpOnly),
+      secure: Boolean(c.secure),
+      sameSite: sameSiteMap[String(c.sameSite || '').toLowerCase()] || 'Lax',
+      expires: c.expirationDate ?? c.expires ? Math.floor(Number(c.expirationDate ?? c.expires)) : -1,
+    }));
+  return { cookies, origins: [] };
+}
 
 // Read scraped enrollment counts (fresh each call so a re-scrape shows up).
 function enrollmentCache() {
@@ -44,6 +63,28 @@ function revenueCache() {
   }
 }
 
+// Read scraped caption languages: { perCourse: { <courseId>: ["en","es",...] } }.
+const CAPTIONS_FILE = process.env.CAPTIONS_FILE || join(__dirname, 'caption-cache.json');
+function captionsCache() {
+  if (!existsSync(CAPTIONS_FILE)) return { perCourse: {} };
+  try {
+    return JSON.parse(readFileSync(CAPTIONS_FILE, 'utf8'));
+  } catch {
+    return { perCourse: {} };
+  }
+}
+
+// Read scraped active coupons: { perCourse: { <courseId>: [{code,...}] } }.
+const COUPONS_FILE = process.env.COUPONS_FILE || join(__dirname, 'coupon-cache.json');
+function couponsCache() {
+  if (!existsSync(COUPONS_FILE)) return { perCourse: {} };
+  try {
+    return JSON.parse(readFileSync(COUPONS_FILE, 'utf8'));
+  } catch {
+    return { perCourse: {} };
+  }
+}
+
 app.use(cors());
 app.use(express.json());
 
@@ -71,22 +112,119 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, hasApiKey: Boolean(process.env.UDEMY_API_KEY) });
 });
 
+// --- Udemy account connection (session) ----------------------------------
+// Connection status: is a session saved, and which scraped datasets exist?
+app.get('/api/connection', (req, res) => {
+  res.json({
+    connected: existsSync(AUTH_FILE),
+    data: {
+      enrollment: existsSync(CACHE_FILE),
+      revenue: existsSync(REVENUE_FILE),
+      captions: existsSync(join(__dirname, 'caption-cache.json')),
+    },
+  });
+});
+
+// Connect by submitting a Cookie-Editor export of udemy.com cookies.
+app.post('/api/connect', (req, res) => {
+  const state = cookiesToState(req.body?.cookies ?? req.body);
+  const names = state.cookies.map((c) => c.name);
+  // Sanity: must look like a logged-in Udemy session.
+  const isUdemy = state.cookies.some((c) => /udemy\.com$/.test(c.domain));
+  const loggedIn = names.includes('dj_session_id') || names.includes('ud_cache_logged_in');
+  if (!state.cookies.length || !isUdemy || !loggedIn) {
+    return res.status(400).json({
+      error: 'That does not look like a logged-in udemy.com cookie export. Export from udemy.com while signed in.',
+      cookieCount: state.cookies.length,
+    });
+  }
+  writeFileSync(AUTH_FILE, JSON.stringify(state, null, 2));
+  res.json({ connected: true, cookieCount: state.cookies.length });
+});
+
+// Disconnect: remove the saved session.
+app.post('/api/disconnect', (req, res) => {
+  try { if (existsSync(AUTH_FILE)) unlinkSync(AUTH_FILE); } catch {}
+  res.json({ connected: false });
+});
+
+// --- Coursera account connection (session) -------------------------------
+app.get('/api/coursera/connection', (req, res) => {
+  res.json({ connected: existsSync(COURSERA_AUTH_FILE) });
+});
+
+app.post('/api/coursera/connect', (req, res) => {
+  const state = cookiesToState(req.body?.cookies ?? req.body);
+  const names = state.cookies.map((c) => c.name);
+  const isCoursera = state.cookies.some((c) => /coursera\.org$/.test(c.domain));
+  const loggedIn = names.includes('CAUTH'); // Coursera's auth cookie
+  if (!state.cookies.length || !isCoursera || !loggedIn) {
+    return res.status(400).json({
+      error: 'That does not look like a logged-in coursera.org cookie export (missing CAUTH). Export from coursera.org while signed in.',
+      cookieCount: state.cookies.length,
+    });
+  }
+  writeFileSync(COURSERA_AUTH_FILE, JSON.stringify(state, null, 2));
+  res.json({ connected: true, cookieCount: state.cookies.length });
+});
+
+app.post('/api/coursera/disconnect', (req, res) => {
+  try { if (existsSync(COURSERA_AUTH_FILE)) unlinkSync(COURSERA_AUTH_FILE); } catch {}
+  res.json({ connected: false });
+});
+
+// Coursera course list (from the scraped cache).
+app.get('/api/coursera/courses', (req, res) => {
+  const f = join(__dirname, 'coursera-courses-cache.json');
+  if (!existsSync(f)) return res.json({ courses: [], scrapedAt: null });
+  try { res.json(JSON.parse(readFileSync(f, 'utf8'))); }
+  catch { res.json({ courses: [], scrapedAt: null }); }
+});
+
+// Coursera partner overview KPIs (from the Looker dashboard).
+app.get('/api/coursera/overview', (req, res) => {
+  const f = join(__dirname, 'coursera-overview-cache.json');
+  if (!existsSync(f)) return res.json({ kpis: {}, scrapedAt: null });
+  try { res.json(JSON.parse(readFileSync(f, 'utf8'))); }
+  catch { res.json({ kpis: {}, scrapedAt: null }); }
+});
+
+// Coursera per-course metrics (enrollments/completions/rating).
+app.get('/api/coursera/metrics', (req, res) => {
+  const f = join(__dirname, 'coursera-metrics-cache.json');
+  if (!existsSync(f)) return res.json({ courses: [], scrapedAt: null });
+  try { res.json(JSON.parse(readFileSync(f, 'utf8'))); }
+  catch { res.json({ courses: [], scrapedAt: null }); }
+});
+
+// Bulk-create coupons. User-triggered write. dryRun:true previews only.
+// Requires a connected session; opens a headed browser to POST to Udemy.
+app.post('/api/coupons/create', (req, res, next) => {
+  if (!existsSync(AUTH_FILE)) return res.status(400).json({ error: 'Not connected. Use Connect Udemy first.' });
+  import('./couponCreate.js')
+    .then(({ createCoupons }) => createCoupons(req.body || {}))
+    .then((out) => res.json(out))
+    .catch(next);
+});
+
 // --- Typed routes for the common instructor resources --------------------
 
 const COURSE_FIELDS =
-  '@default,rating,num_reviews,headline,is_published,created,visible_instructors';
+  '@default,rating,num_reviews,headline,is_published,created,published_time,visible_instructors';
 
 // List your taught courses. By default fetches ALL pages (168 is small);
 // pass ?page=N for a single page.
 app.get('/api/courses', wrap(async (req, res) => {
   const { counts, scrapedAt } = enrollmentCache();
   const { perCourse, total: totalRevenue, currency } = revenueCache();
-  const { transcripts } = transcriptCache();
+  const { perCourse: captions } = captionsCache();
+  const { perCourse: coupons } = couponsCache();
   const enrich = (c) => ({
     ...c,
     num_subscribers: counts[c.id] ?? null,
     revenue: perCourse[c.id] ?? null,
-    transcript_languages: transcripts[c.id] ?? null,
+    caption_locales: captions[c.id] ?? null,
+    coupons: coupons[c.id] ?? null,
   });
 
   if (req.query.page) {
