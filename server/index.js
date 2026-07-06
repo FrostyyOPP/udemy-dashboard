@@ -12,6 +12,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // CACHE_FILE can point at a Render persistent disk; defaults to the repo copy.
 const CACHE_FILE = process.env.CACHE_FILE || join(__dirname, 'enrollment-cache.json');
 const REVENUE_FILE = process.env.REVENUE_FILE || join(__dirname, 'revenue-cache.json');
+const TRANSCRIPT_FILE = process.env.TRANSCRIPT_FILE || join(__dirname, 'transcript-cache.json');
 const AUTH_FILE = join(__dirname, 'udemy-auth.json');
 const COURSERA_AUTH_FILE = join(__dirname, 'coursera-auth.json');
 
