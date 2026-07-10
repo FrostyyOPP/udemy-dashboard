@@ -33,6 +33,15 @@ Notes for anyone building on the Udemy API:
 - The **Affiliate API was discontinued Jan 2025**; the Instructor API is in maintenance mode.
 - Course IDs are opaque strings ending in `==` — pass them as query params, don't URL-encode into a path.
 
+## Documentation
+
+- **[SETUP.md](SETUP.md)** — full setup & operations guide (env vars, connect
+  flows, scrapers, keeping it always-on). **Start here to run it on a new machine.**
+- **[docs/UDEMY-INTERNAL-API.md](docs/UDEMY-INTERNAL-API.md)** — reverse-engineered
+  `api-2.0` endpoints for the data + authoring the official API can't do
+  (enrollment, revenue, coupons, captions, and full course/quiz/role-play creation).
+- **[ROADMAP.md](ROADMAP.md)** — capabilities inventory + what's next.
+
 ## Quick start
 
 ### 1. Get an API key
