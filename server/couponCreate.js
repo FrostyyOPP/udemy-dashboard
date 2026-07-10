@@ -3,6 +3,7 @@
 // A WRONG payload returns a 400 and creates nothing, so this is safe to try.
 // dryRun:true plans the payloads without any write.
 import { existsSync } from 'node:fs';
+import { minimizeWindow } from './browserWindow.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -56,6 +57,7 @@ export async function createCoupons({
   const ctx = await browser.newContext({ storageState: AUTH_FILE, userAgent: UA });
   await ctx.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => undefined }));
   const page = await ctx.newPage();
+  await minimizeWindow(ctx, page); // keep the automation window out of the user's way
 
   async function apiGet(url) {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});

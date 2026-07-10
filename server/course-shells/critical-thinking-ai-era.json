@@ -1,0 +1,59 @@
+{
+  "meta": {
+    "title": "Critical Thinking and Decision-Making for the AI Era",
+    "subtitle": "Frameworks, real-world cases, and decision journals for AI-era professionals",
+    "level": "Intermediate",
+    "category": "Leadership and Professional Development",
+    "subcategory": "Critical Thinking and Decision Quality",
+    "duration_hint": "~4 hours (~2h video + labs, readings, assessments, capstone)",
+    "primary_language": "en_US"
+  },
+  "sections": [
+    { "title": "Introduction", "items": [
+      { "type": "lecture", "kind": "video", "title": "Intro Video to Course", "note": "Talking Head · 2 min" }
+    ]},
+    { "title": "Module 1 · Lesson 1 — Why human judgment compounds in value", "items": [
+      { "type": "lecture", "kind": "video", "title": "Module Introduction", "note": "Talking Head · 2 min" },
+      { "type": "lecture", "kind": "video", "title": "The Strategist vs the Technician", "note": "Conceptual · 5 min" },
+      { "type": "lecture", "kind": "video", "title": "System One and System Two at Work", "note": "Conceptual · 5 min" },
+      { "type": "lecture", "kind": "video", "title": "The Decision Quality Crisis", "note": "Conceptual · 5 min" }
+    ]},
+    { "title": "Module 1 · Lesson 2 — The Bias Stack diagnostic", "items": [
+      { "type": "lecture", "kind": "video", "title": "Cognitive Bias and the AI Mirror", "note": "Conceptual · 5 min" },
+      { "type": "lecture", "kind": "video", "title": "Dataset and Model Bias", "note": "Conceptual · 5 min" },
+      { "type": "lecture", "kind": "video", "title": "Bias Stack in Action: The Amazon Hiring Case", "note": "Demo · 5 min" }
+    ]},
+    { "title": "Module 1 · Lesson 3 — The Trust Score and spotting errors", "items": [
+      { "type": "lecture", "kind": "video", "title": "The Five Trust Score Criteria", "note": "Conceptual · 5 min" },
+      { "type": "lecture", "kind": "video", "title": "Scoring an AI Summary: The Board Pre-Read", "note": "Demo · 5 min" },
+      { "type": "lecture", "kind": "video", "title": "Hallucinations and the Mata v. Avianca Case", "note": "Demo · 5 min" },
+      { "type": "assignment", "title": "Diagnostic lab: Bias Stack, Trust Score, and citation audit", "note": "Hands-on lab · 10 min" },
+      { "type": "lecture", "kind": "article", "title": "Reading: Amazon ditched AI recruitment software because it was biased against women", "note": "MIT Technology Review", "url": "https://www.technologyreview.com/2018/10/10/139858/amazon-ditched-ai-recruitment-software-because-it-was-biased-against-women/" },
+      { "type": "lecture", "kind": "article", "title": "Discussion Prompts (Module 1)", "note": "2 open-ended questions" }
+    ]},
+    { "title": "Module 2 · Lesson 1 — Structured reasoning under uncertainty", "items": [
+      { "type": "lecture", "kind": "video", "title": "Module Introduction", "note": "Talking Head · 2 min" },
+      { "type": "lecture", "kind": "video", "title": "Premortem and Red-Team Thinking", "note": "Conceptual · 5 min" },
+      { "type": "lecture", "kind": "video", "title": "Base Rates and Calibration", "note": "Conceptual · 5 min" },
+      { "type": "lecture", "kind": "video", "title": "Frameworks in a Financial Projection Scenario", "note": "Demo · 5 min" }
+    ]},
+    { "title": "Module 2 · Lesson 2 — Collaboration workflows and prompt risk review", "items": [
+      { "type": "lecture", "kind": "video", "title": "Draft-and-Verify and Adversarial Review", "note": "Conceptual · 5 min" },
+      { "type": "lecture", "kind": "video", "title": "Premortem-with-AI and Decision Audit", "note": "Conceptual · 5 min" },
+      { "type": "lecture", "kind": "video", "title": "Prompt Risk Review and the Moffatt v. Air Canada Case", "note": "Demo · 5 min" }
+    ]},
+    { "title": "Module 2 · Lesson 3 — Decide and defend: the capstone", "items": [
+      { "type": "lecture", "kind": "video", "title": "The Decision Journal and the Defensible Memo", "note": "Conceptual · 5 min" },
+      { "type": "lecture", "kind": "video", "title": "Capstone Walk-Through: From Course to Operating Habit", "note": "Demo · 5 min" },
+      { "type": "lecture", "kind": "video", "title": "The Thirty-Day Practice Plan", "note": "Conceptual · 5 min" },
+      { "type": "assignment", "title": "Capstone Decision Memo with Prompt Risk Review", "note": "Hands-on lab · 10 min" },
+      { "type": "lecture", "kind": "article", "title": "Reading: Before You Make That Big Decision (HBR)", "note": "Kahneman, Lovallo, Sibony", "url": "https://hbr.org/2011/06/the-big-idea-before-you-make-that-big-decision" },
+      { "type": "lecture", "kind": "article", "title": "Discussion Prompts (Module 2)", "note": "2 open-ended questions" }
+    ]},
+    { "title": "Wrap-up & Assessment", "items": [
+      { "type": "lecture", "kind": "video", "title": "Course Wrap-up Video", "note": "Talking Head · <=4 min" },
+      { "type": "quiz", "title": "Graded Assessment", "note": "20 questions (10 per module) · to be filled from your quiz doc" },
+      { "type": "assignment", "title": "Capstone Decision Memo (Course-end Project)", "note": "Cross-functional decision memo · 30 min" }
+    ]}
+  ]
+}

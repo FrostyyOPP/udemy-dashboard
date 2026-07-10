@@ -5,6 +5,7 @@ import { writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { chromium } from 'playwright';
+import { minimizeWindow } from './browserWindow.js';
 import { udemyGet } from './udemyClient.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -27,6 +28,7 @@ const ctx = await browser.newContext({ storageState: AUTH_FILE, userAgent: UA })
 await ctx.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => undefined }));
 const page = await ctx.newPage();
 
+await minimizeWindow(ctx, page); // keep the automation window out of the user's way
 let shareHolderId = null;
 page.on('response', (res) => {
   const m = res.url().match(/\/api-2\.0\/share-holders\/(?:v[\d.]+\/)?(\d+)\//);

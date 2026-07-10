@@ -19,9 +19,13 @@
     "coursera:overview": "node scrapeCourseraOverview.js",
     "coursera:metrics": "node scrapeCourseraMetrics.js",
     "discover": "node discover.js",
-    "update": "node update-all.js"
+    "update": "node update-all.js",
+    "captions:files": "node scrapeCaptionFiles.js",
+    "translate": "node translateVtt.js",
+    "captions:upload": "node uploadCaptions.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",

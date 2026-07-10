@@ -1,10 +1,12 @@
 import 'dotenv/config';
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import express from 'express';
 import cors from 'cors';
 import { udemyGet } from './udemyClient.js';
+import { SUPPORTED_LANGS, startJob as startCaptionJob, getJob as getCaptionJob } from './localizeCaptions.js';
 
 const app = express();
 const PORT = process.env.PORT || 5055;
@@ -212,6 +214,13 @@ app.get('/api/coursera/overview', (req, res) => {
   catch { res.json({ kpis: {}, scrapedAt: null }); }
 });
 
+// Monthly revenue history (real, from Udemy's own share-holders API — full
+// lifetime series, not a growing snapshot). Powers the "Revenue Over Time" chart.
+app.get('/api/revenue/monthly', (req, res) => {
+  const { monthly, currency, scrapedAt } = revenueCache();
+  res.json({ monthly: monthly || [], currency: currency || 'USD', scrapedAt: scrapedAt || null });
+});
+
 // Coursera per-course metrics (enrollments/completions/rating).
 app.get('/api/coursera/metrics', (req, res) => {
   const f = join(__dirname, 'coursera-metrics-cache.json');
@@ -230,10 +239,63 @@ app.post('/api/coupons/create', (req, res, next) => {
     .catch(next);
 });
 
+// --- Caption localization ------------------------------------------------
+// Translate + upload captions in multiple languages. A job runs a headed
+// browser in the background; the client polls /api/captions/jobs/:id.
+
+// Languages offered by the picker (Core 6 pinned first).
+app.get('/api/captions/languages', (req, res) => {
+  res.json({ languages: SUPPORTED_LANGS.map(({ name, locale, core }) => ({ name, locale, core: !!core })) });
+});
+
+// Start a localization job. Body: { slugs:[], locales:[], dryRun:bool }.
+// dryRun translates + maps but makes NO writes to Udemy.
+app.post('/api/captions/localize', (req, res) => {
+  if (!existsSync(AUTH_FILE)) return res.status(400).json({ error: 'Not connected. Use Connect Udemy first.' });
+  try {
+    const { slugs = [], locales = [], dryRun = false, limit = 0 } = req.body || {};
+    const job = startCaptionJob({ slugs, locales, dryRun: !!dryRun, limit });
+    res.json({ jobId: job.id, status: job.status });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// Poll job progress.
+app.get('/api/captions/jobs/:id', (req, res) => {
+  const job = getCaptionJob(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  res.json(job);
+});
+
+// On-demand refresh of caption-cache.json (read-only — re-runs scrapeCaptions.js).
+// Captions are normally refreshed once a day; this lets the dashboard catch up
+// right away after a caption is added/changed directly on Udemy.
+let captionRefresh = { running: false, startedAt: null, finishedAt: null, ok: null, error: null };
+app.post('/api/captions/refresh-cache', (req, res) => {
+  if (!existsSync(AUTH_FILE)) return res.status(400).json({ error: 'Not connected. Use Connect Udemy first.' });
+  if (captionRefresh.running) return res.status(409).json({ error: 'A refresh is already running.' });
+  captionRefresh = { running: true, startedAt: new Date().toISOString(), finishedAt: null, ok: null, error: null };
+  const p = spawn(process.execPath, [join(__dirname, 'scrapeCaptions.js')], { cwd: __dirname });
+  let stderr = '';
+  p.stderr?.on('data', (d) => { stderr += d.toString(); });
+  p.on('close', (code) => {
+    captionRefresh = {
+      running: false, startedAt: captionRefresh.startedAt, finishedAt: new Date().toISOString(),
+      ok: code === 0, error: code === 0 ? null : (stderr.trim().slice(-500) || `exit code ${code}`),
+    };
+  });
+  p.on('error', (e) => {
+    captionRefresh = { running: false, startedAt: captionRefresh.startedAt, finishedAt: new Date().toISOString(), ok: false, error: e.message };
+  });
+  res.json({ started: true });
+});
+app.get('/api/captions/refresh-cache', (req, res) => res.json(captionRefresh));
+
 // --- Typed routes for the common instructor resources --------------------
 
 const COURSE_FIELDS =
-  '@default,rating,num_reviews,headline,is_published,created,published_time,visible_instructors';
+  '@default,published_title,rating,num_reviews,headline,is_published,created,published_time,visible_instructors';
 
 // List your taught courses. By default fetches ALL pages (168 is small);
 // pass ?page=N for a single page.

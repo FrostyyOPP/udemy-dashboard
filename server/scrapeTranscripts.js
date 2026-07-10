@@ -5,6 +5,7 @@ import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { chromium } from 'playwright';
+import { minimizeWindow } from './browserWindow.js';
 import { udemyGet } from './udemyClient.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -80,6 +81,7 @@ async function scrapeOne(browser, course) {
   if (AUTH) ctxOpts.storageState = AUTH;
   const ctx = await browser.newContext(ctxOpts);
   const page = await ctx.newPage();
+  await minimizeWindow(ctx, page); // keep the automation window out of the user's way
   try {
     await page.goto(url, { waitUntil: 'networkidle', timeout: 35000 }).catch(() =>
       page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {})

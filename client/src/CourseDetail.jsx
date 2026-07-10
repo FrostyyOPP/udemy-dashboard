@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import LocalizeCaptions from './LocalizeCaptions.jsx';
 
 const DOMAIN_RULES = [
   { domain: 'Finance & Capital Markets', keywords: [
@@ -131,7 +132,10 @@ export default function CourseDetail({ course, onClose }) {
               )}
             </div>
           </div>
-          <button className="close" onClick={onClose}>✕</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <LocalizeCaptions courses={[course]} single />
+            <button className="close" onClick={onClose}>✕</button>
+          </div>
         </div>
 
         <div className="tabs">

@@ -3,10 +3,11 @@
 // the api-2.0 data endpoints). Pulls the bulk taught-courses endpoint, then maps
 // results to instructor-API course ids by slug. Writes caption-cache.json.
 // Run: npm run scrape:captions   (a browser window opens briefly — leave it)
-import { writeFileSync, existsSync } from 'node:fs';
+import { writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { chromium } from 'playwright';
+import { minimizeWindow } from './browserWindow.js';
 import { udemyGet } from './udemyClient.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -43,6 +44,7 @@ const ctx = await browser.newContext({ storageState: AUTH_FILE, userAgent: UA })
 await ctx.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => undefined }));
 const page = await ctx.newPage();
 
+await minimizeWindow(ctx, page); // keep the automation window out of the user's way
 // Warm up / clear the Cloudflare challenge once on a normal page.
 await page.goto('https://www.udemy.com/', { waitUntil: 'domcontentloaded', timeout: 40000 }).catch(() => {});
 await sleep(3000);
@@ -79,6 +81,14 @@ while (true) {
   page2 += 1;
 }
 
+// Safeguard: a scrape that read 0 courses is an error state (Cloudflare block /
+// session issue), NOT "you have no captions". Never overwrite a good cache with
+// empty data — keep the existing cache and exit non-zero so callers can retry.
+if (Object.keys(perCourse).length === 0) {
+  const hadData = existsSync(CACHE_FILE) && Object.keys(JSON.parse(readFileSync(CACHE_FILE, 'utf8')).perCourse || {}).length > 0;
+  console.error(`⚠️ Scrape returned 0 courses — not overwriting caption-cache.json${hadData ? ' (kept existing data)' : ''}. Likely Cloudflare/session; retry.`);
+  process.exit(1);
+}
 writeFileSync(CACHE_FILE, JSON.stringify({ scrapedAt: new Date().toISOString(), perCourse }, null, 2));
 const withCaps = Object.values(perCourse).filter((v) => v.length).length;
 console.log(`✅ Captions for ${Object.keys(perCourse).length} courses (${withCaps} have subtitles) → caption-cache.json`);

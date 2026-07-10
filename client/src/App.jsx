@@ -5,6 +5,7 @@ import ConnectUdemy from './ConnectUdemy.jsx';
 import ConnectCoursera from './ConnectCoursera.jsx';
 import CourseraPanel from './CourseraPanel.jsx';
 import CreateCoupons from './CreateCoupons.jsx';
+import LocalizeCaptions from './LocalizeCaptions.jsx';
 
 function csvCell(v) {
   const s = v == null ? '' : String(v);
@@ -356,6 +357,7 @@ export default function App() {
           ⬇ Export CSV
         </button>
         <CreateCoupons courses={courses} onDone={loadCourses} />
+        <LocalizeCaptions courses={courses} onDone={loadCourses} />
         <span className="muted">{view.length} shown</span>
       </div>
 

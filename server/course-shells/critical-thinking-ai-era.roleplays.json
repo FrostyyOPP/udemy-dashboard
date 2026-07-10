@@ -1,0 +1,55 @@
+[
+ {
+  "title_raw": "Role Play 1: Should this AI-drafted brief go out?",
+  "module": "Module 1",
+  "plan": {
+   "title": "Should this AI-drafted brief go out?",
+   "scenario": "A colleague has used an AI assistant to produce a competitor analysis brief that is due to go to a client by the end of the day. It reads well, it is neatly formatted, and it includes specific figures and a couple of cited sources. He is keen for your quick sign-off so it can ship on time.\nYour task is to slow the moment down and apply the Module 1 diagnostic tools in conversation. Score the brief against the AI Output Trust Score, name where bias could have entered using the Bias Stack, and identify at least one figure or citation that has to be verified before the brief can be trusted.\nYour colleague will push back with reasonable-sounding lines, for example that the AI used current data or that the brief simply confirms what the team already expected. Hold the line on verification without dismissing his work, and finish with a clear routing decision.",
+   "learner_role": "You are the reviewer who must decide whether the AI-drafted brief is ready to send or needs to be checked first."
+  },
+  "character": {
+   "avatar": "An energetic colleague in their thirties, smart-casual, laptop open with the draft already on screen, visibly keen to ship it.",
+   "name": "Greg Holloway",
+   "role": "Marketing colleague who drafted the brief with AI",
+   "personality": "Fast-moving and optimistic. He likes how much time AI saves and tends to trust polished output, especially when it agrees with what the team already expected.\nUnder deadline pressure, he reads fluent and complete as finished, which is exactly the fast, automatic thinking the module warns about. He is not careless, just quick.\nHe defends the draft with lines such as the AI used current data, and he responds far better to specific, concrete checks than to vague doubts.",
+   "first_line": "I ran the whole competitor brief through AI and it looks great. Numbers, sources, all of it. Can you give it a quick yes so I can send it to the client before five?"
+  },
+  "settings": {
+   "meeting_title": "Brief review before it ships",
+   "duration": "10 minutes"
+  },
+  "goals": [
+   "Score the brief against at least three of the five Trust Score criteria and state what each one scores.",
+   "Name at least one point where cognitive, dataset, or model bias could have entered, using the Bias Stack.",
+   "Identify at least one figure or citation that must be verified before the brief is trusted, and explain why polish is not proof.",
+   "State a clear routing decision, applying the rule that any red or two ambers triggers review."
+  ]
+ },
+ {
+  "title_raw": "Role Play 2: Defend your AI-assisted recommendation",
+  "module": "Module 2",
+  "plan": {
+   "title": "Defend your AI-assisted recommendation",
+   "scenario": "You have prepared a recommendation on a cross-functional decision. An AI assistant produced the initial analysis, which you then verified, stress-tested with a premortem, checked against a base rate from comparable past cases, and recorded in a decision journal entry.\nYou are now in a short review with the CFO, who has read your one-page memo. She is supportive of using AI but skeptical of AI output that has not been examined. She wants to understand not only what you recommend, but how you reached it and where it could still be wrong.\nYour task is to walk your reasoning, name the AI inputs and how you verified them, surface the failure modes your premortem found and their mitigations, ground your estimate in the base rate, and state your confidence honestly. You cannot claim certainty you do not have, and she will press on any figure you cannot source.",
+   "learner_role": "You are the decision owner, presenting an AI-assisted recommendation to your CFO for sign-off."
+  },
+  "character": {
+   "avatar": "A composed executive in their late fifties, business-formal, reading glasses, holding a printed copy of your memo with notes in the margin.",
+   "name": "Diane Whitfield",
+   "role": "Chief Financial Officer",
+   "personality": "Analytical, direct, and fair. She has approved sound decisions that still failed and rejected weak ones that would have worked, so she judges decision quality, not just the outcome.\nShe treats AI as a useful drafting tool, but she was once embarrassed by an unverified figure in a board document, so she now expects every AI input to be checked.\nShe values people who can say I do not know and who show their reasoning. She communicates in short, pointed questions and expects sourced answers.",
+   "first_line": "Thanks for the memo. Before we get to your recommendation, walk me through one thing. Which parts of this came from the AI, and how did you check them?"
+  },
+  "settings": {
+   "meeting_title": "CFO recommendation review",
+   "duration": "10 minutes"
+  },
+  "goals": [
+   "Identify which inputs came from the AI and explain how you verified each one using the Trust Score.",
+   "Name at least two failure modes your premortem surfaced, and state the mitigation you propose for each.",
+   "Support your estimate with a base rate from comparable past cases, not only this case's specifics.",
+   "State your confidence level and the main residual risk, without overclaiming.",
+   "Confirm that you screened any sensitive prompt with a Prompt Risk Review before using the tool."
+  ]
+ }
+]

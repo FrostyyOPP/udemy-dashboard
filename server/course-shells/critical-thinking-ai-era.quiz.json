@@ -1,0 +1,902 @@
+[
+ {
+  "prompt": "In this course, what distinguishes a strategist from a technician in the way each works with AI?",
+  "options": [
+   {
+    "label": "A",
+    "text": "A technician writes better prompts than a strategist.",
+    "correct": false,
+    "feedback": "Prompt skill is not the differentiator; both may prompt well."
+   },
+   {
+    "label": "B",
+    "text": "A strategist applies judgment to the AI output before it moves forward, while a technician focuses on producing output quickly.",
+    "correct": true,
+    "feedback": "The differentiator is judgment applied to the output, not speed or prompt craft."
+   },
+   {
+    "label": "C",
+    "text": "A strategist avoids AI entirely, while a technician relies on it.",
+    "correct": false,
+    "feedback": "The strategist uses AI but evaluates what it produces."
+   },
+   {
+    "label": "D",
+    "text": "A strategist always works faster than a technician.",
+    "correct": false,
+    "feedback": "Speed is the technician's emphasis; the strategist's edge is judgment."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "As AI takes over more of the production of work, where does durable human value increasingly concentrate?",
+  "options": [
+   {
+    "label": "A",
+    "text": "In generating output as fast as possible.",
+    "correct": false,
+    "feedback": "Generation is what AI now does cheaply, so value moves away from raw production."
+   },
+   {
+    "label": "B",
+    "text": "In the judgment used to evaluate, question, and stand behind the output.",
+    "correct": true,
+    "feedback": "Judgment becomes the differentiator as production is commoditized."
+   },
+   {
+    "label": "C",
+    "text": "In memorizing more facts than the AI.",
+    "correct": false,
+    "feedback": "Recall is not where human advantage concentrates."
+   },
+   {
+    "label": "D",
+    "text": "In always using the most advanced model available.",
+    "correct": false,
+    "feedback": "Tool access is not the source of durable human value here."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "How are System One and System Two thinking best described?",
+  "options": [
+   {
+    "label": "A",
+    "text": "System One is slow and deliberate; System Two is fast and automatic.",
+    "correct": false,
+    "feedback": "That reverses the two modes."
+   },
+   {
+    "label": "B",
+    "text": "System One is fast and automatic; System Two is slow and effortful.",
+    "correct": true,
+    "feedback": "System One is intuitive and quick; System Two is deliberate and effortful."
+   },
+   {
+    "label": "C",
+    "text": "Both are fast and automatic.",
+    "correct": false,
+    "feedback": "System Two is effortful, not automatic."
+   },
+   {
+    "label": "D",
+    "text": "Both are slow and deliberate.",
+    "correct": false,
+    "feedback": "System One is fast and automatic."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "Why does fluent, well-formatted AI output tend to escape careful scrutiny?",
+  "options": [
+   {
+    "label": "A",
+    "text": "Because it is usually too long to read.",
+    "correct": false,
+    "feedback": "Length is not the mechanism described."
+   },
+   {
+    "label": "B",
+    "text": "Because polish removes the rough cues that normally signal a draft needs checking, so it is accepted on fast, automatic thinking.",
+    "correct": true,
+    "feedback": "Without roughness cues, System One reads finished as fine."
+   },
+   {
+    "label": "C",
+    "text": "Because formatting makes errors easier to spot.",
+    "correct": false,
+    "feedback": "The opposite is true; polish hides the cues that prompt scrutiny."
+   },
+   {
+    "label": "D",
+    "text": "Because System Two activates automatically for clean documents.",
+    "correct": false,
+    "feedback": "System Two is effortful and is not triggered by clean formatting."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "What does the course mean by the decision quality crisis?",
+  "options": [
+   {
+    "label": "A",
+    "text": "AI models are becoming less accurate over time.",
+    "correct": false,
+    "feedback": "The crisis concerns review capacity, not declining model accuracy."
+   },
+   {
+    "label": "B",
+    "text": "The volume of AI-assisted work has outpaced the capacity to review it, so unchecked outputs flow into decisions.",
+    "correct": true,
+    "feedback": "It is the widening gap between AI adoption and AI review."
+   },
+   {
+    "label": "C",
+    "text": "Employees are making fewer decisions than before.",
+    "correct": false,
+    "feedback": "The issue is unreviewed decisions, not fewer decisions."
+   },
+   {
+    "label": "D",
+    "text": "Organizations are using too few AI tools.",
+    "correct": false,
+    "feedback": "The crisis is about review discipline, not tool quantity."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "Among the biases that affect AI use, which one is specific to working with automated systems?",
+  "options": [
+   {
+    "label": "A",
+    "text": "Confirmation bias.",
+    "correct": false,
+    "feedback": "Confirmation bias predates AI and applies broadly."
+   },
+   {
+    "label": "B",
+    "text": "Anchoring.",
+    "correct": false,
+    "feedback": "Anchoring is a general bias, not specific to automation."
+   },
+   {
+    "label": "C",
+    "text": "Automation bias.",
+    "correct": true,
+    "feedback": "Automation bias is the tendency to trust automated output more than equivalent human input."
+   },
+   {
+    "label": "D",
+    "text": "Availability.",
+    "correct": false,
+    "feedback": "Availability is a general bias, not unique to AI."
+   }
+  ],
+  "correct": "C"
+ },
+ {
+  "prompt": "Accepting an AI output mainly because it matches what you already believed is an example of which bias?",
+  "options": [
+   {
+    "label": "A",
+    "text": "Confirmation bias.",
+    "correct": true,
+    "feedback": "Confirmation bias is favoring information that agrees with existing beliefs."
+   },
+   {
+    "label": "B",
+    "text": "Anchoring.",
+    "correct": false,
+    "feedback": "Anchoring is over-relying on the first figure or framing encountered."
+   },
+   {
+    "label": "C",
+    "text": "Automation bias.",
+    "correct": false,
+    "feedback": "Automation bias is trusting the output because a machine produced it, regardless of agreement."
+   },
+   {
+    "label": "D",
+    "text": "Availability.",
+    "correct": false,
+    "feedback": "Availability is over-weighting what is surfaced first or comes to mind easily."
+   }
+  ],
+  "correct": "A"
+ },
+ {
+  "prompt": "In the Bias Stack, what is dataset bias?",
+  "options": [
+   {
+    "label": "A",
+    "text": "Bias introduced by the reader's own assumptions.",
+    "correct": false,
+    "feedback": "That is cognitive bias, a different layer."
+   },
+   {
+    "label": "B",
+    "text": "Bias inherited from the composition of the data the model was trained on.",
+    "correct": true,
+    "feedback": "Dataset bias comes from what the training data over-represents or omits."
+   },
+   {
+    "label": "C",
+    "text": "Bias added only at the prompting stage.",
+    "correct": false,
+    "feedback": "Prompting sits in the cognitive layer, not the dataset layer."
+   },
+   {
+    "label": "D",
+    "text": "Bias that disappears once sensitive words are removed.",
+    "correct": false,
+    "feedback": "Removing obvious terms does not remove dataset or model bias."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "Why can model bias persist even after an obvious sensitive attribute is removed from the data?",
+  "options": [
+   {
+    "label": "A",
+    "text": "Because the model memorizes the removed attribute.",
+    "correct": false,
+    "feedback": "The mechanism is proxies, not memorization of the deleted field."
+   },
+   {
+    "label": "B",
+    "text": "Because modeling choices and proxy variables can reconstruct the same pattern through correlated signals.",
+    "correct": true,
+    "feedback": "Feature selection, proxies, and optimization targets reproduce the bias indirectly."
+   },
+   {
+    "label": "C",
+    "text": "Because removing data always improves fairness.",
+    "correct": false,
+    "feedback": "Removing the signal does not guarantee fairness; proxies remain."
+   },
+   {
+    "label": "D",
+    "text": "Because model bias only exists in image models.",
+    "correct": false,
+    "feedback": "Model bias is not limited to one type of model."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "What are the three layers of the Bias Stack, from top to bottom?",
+  "options": [
+   {
+    "label": "A",
+    "text": "Prompt bias, output bias, user bias.",
+    "correct": false,
+    "feedback": "These are not the named layers."
+   },
+   {
+    "label": "B",
+    "text": "Cognitive bias, dataset bias, model bias.",
+    "correct": true,
+    "feedback": "The stack runs from the human in the room, to the training data, to the modeling choices."
+   },
+   {
+    "label": "C",
+    "text": "Statistical bias, sampling bias, reporting bias.",
+    "correct": false,
+    "feedback": "These are not the course's three layers."
+   },
+   {
+    "label": "D",
+    "text": "Input bias, processing bias, display bias.",
+    "correct": false,
+    "feedback": "These are not the named layers."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "What are the five AI Output Trust Score criteria, in order?",
+  "options": [
+   {
+    "label": "A",
+    "text": "Truthfulness, source traceability, relevance, reasoning quality, risk class.",
+    "correct": true,
+    "feedback": "The rubric runs from whether the output is correct to how much it matters."
+   },
+   {
+    "label": "B",
+    "text": "Relevance, tone, accuracy, length, confidence.",
+    "correct": false,
+    "feedback": "These are not the criteria."
+   },
+   {
+    "label": "C",
+    "text": "Source traceability, truthfulness, risk class, relevance, reasoning quality.",
+    "correct": false,
+    "feedback": "The order is wrong."
+   },
+   {
+    "label": "D",
+    "text": "Truthfulness, creativity, speed, relevance, risk class.",
+    "correct": false,
+    "feedback": "Creativity and speed are not criteria."
+   }
+  ],
+  "correct": "A"
+ },
+ {
+  "prompt": "Under the Trust Score, which result should trigger a review before the output is used?",
+  "options": [
+   {
+    "label": "A",
+    "text": "Only when every criterion is red.",
+    "correct": false,
+    "feedback": "The threshold is lower than all red."
+   },
+   {
+    "label": "B",
+    "text": "Any single red, or two or more ambers.",
+    "correct": true,
+    "feedback": "The routing rule is that any red or two ambers triggers review."
+   },
+   {
+    "label": "C",
+    "text": "Only when the risk class is green.",
+    "correct": false,
+    "feedback": "A green risk class would not trigger review."
+   },
+   {
+    "label": "D",
+    "text": "Never, as long as the output reads well.",
+    "correct": false,
+    "feedback": "Readability is not part of the routing rule."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "What is the purpose of the risk class criterion in the Trust Score?",
+  "options": [
+   {
+    "label": "A",
+    "text": "To measure how fluent the writing is.",
+    "correct": false,
+    "feedback": "Fluency is not what risk class measures."
+   },
+   {
+    "label": "B",
+    "text": "To weight how much the consequences of an error matter, so scrutiny scales with the stakes.",
+    "correct": true,
+    "feedback": "Risk class captures how costly a mistake would be, guiding how hard to check."
+   },
+   {
+    "label": "C",
+    "text": "To count how many sources the output cites.",
+    "correct": false,
+    "feedback": "That is closer to source traceability."
+   },
+   {
+    "label": "D",
+    "text": "To rate the model's overall popularity.",
+    "correct": false,
+    "feedback": "Risk class has nothing to do with popularity."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "In the context of AI outputs, what is a hallucination?",
+  "options": [
+   {
+    "label": "A",
+    "text": "A factual error the model flags as uncertain.",
+    "correct": false,
+    "feedback": "Hallucinations are stated confidently, not flagged as uncertain."
+   },
+   {
+    "label": "B",
+    "text": "Content the model states confidently that is fabricated or unsupported.",
+    "correct": true,
+    "feedback": "A hallucination is a confidently presented fabrication."
+   },
+   {
+    "label": "C",
+    "text": "A deliberate lie programmed by the developer.",
+    "correct": false,
+    "feedback": "It is a property of how the model generates text, not a programmed lie."
+   },
+   {
+    "label": "D",
+    "text": "A formatting glitch in the output.",
+    "correct": false,
+    "feedback": "It concerns fabricated content, not formatting."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "What is the central lesson of the Mata v. Avianca case for professionals using AI?",
+  "options": [
+   {
+    "label": "A",
+    "text": "AI should never be used for any professional work.",
+    "correct": false,
+    "feedback": "The lesson is about verification, not prohibition."
+   },
+   {
+    "label": "B",
+    "text": "Confident, correctly formatted citations can still be fabricated, so each must be verified against its source.",
+    "correct": true,
+    "feedback": "The case shows fabricated citations look real and must be checked."
+   },
+   {
+    "label": "C",
+    "text": "Courts will always detect AI use automatically.",
+    "correct": false,
+    "feedback": "Detection is not the lesson; the responsibility to verify is."
+   },
+   {
+    "label": "D",
+    "text": "Formatting a citation correctly proves that it is real.",
+    "correct": false,
+    "feedback": "Format is exactly what cannot be trusted as proof."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "What is a premortem?",
+  "options": [
+   {
+    "label": "A",
+    "text": "A review held after a project fails in order to assign blame.",
+    "correct": false,
+    "feedback": "That is a postmortem, held after the fact."
+   },
+   {
+    "label": "B",
+    "text": "An exercise in which the team assumes the plan has already failed and works backward to generate the reasons why.",
+    "correct": true,
+    "feedback": "A premortem uses prospective hindsight before the decision is locked."
+   },
+   {
+    "label": "C",
+    "text": "A status meeting to celebrate early wins.",
+    "correct": false,
+    "feedback": "It is a risk-surfacing exercise, not a celebration."
+   },
+   {
+    "label": "D",
+    "text": "A financial audit of past spending.",
+    "correct": false,
+    "feedback": "It concerns future failure modes, not past spending."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "How does a red-team review differ from a premortem?",
+  "options": [
+   {
+    "label": "A",
+    "text": "A red-team assumes failure has happened, while a premortem argues the plan should proceed.",
+    "correct": false,
+    "feedback": "That reverses the two techniques."
+   },
+   {
+    "label": "B",
+    "text": "A premortem collaboratively imagines failure and works back to causes, while a red-team adversarially challenges whether the plan should proceed at all.",
+    "correct": true,
+    "feedback": "Premortem is prospective hindsight; red-team is adversarial pressure."
+   },
+   {
+    "label": "C",
+    "text": "They are identical techniques with different names.",
+    "correct": false,
+    "feedback": "They are complementary but distinct."
+   },
+   {
+    "label": "D",
+    "text": "A red-team can only be run after launch.",
+    "correct": false,
+    "feedback": "It challenges the plan before it is locked in."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "What is a base rate, and which view does it represent?",
+  "options": [
+   {
+    "label": "A",
+    "text": "The cost of running an AI model, representing the inside view.",
+    "correct": false,
+    "feedback": "A base rate is not a cost figure."
+   },
+   {
+    "label": "B",
+    "text": "The rate at which similar past cases turned out a given way, representing the outside view.",
+    "correct": true,
+    "feedback": "Base rates draw on comparable past cases, which is the outside view."
+   },
+   {
+    "label": "C",
+    "text": "The confidence the AI expresses, representing the model's view.",
+    "correct": false,
+    "feedback": "A stated confidence is not a base rate."
+   },
+   {
+    "label": "D",
+    "text": "The number of steps in a plan, representing the project view.",
+    "correct": false,
+    "feedback": "That is unrelated to base rates."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "What does it mean to be well calibrated in your judgments?",
+  "options": [
+   {
+    "label": "A",
+    "text": "To always express maximum confidence.",
+    "correct": false,
+    "feedback": "Calibration is the accuracy of confidence, not maximal confidence."
+   },
+   {
+    "label": "B",
+    "text": "To be right about as often as the confidence you claim, for example correct roughly seventy percent of the time when you say you are seventy percent sure.",
+    "correct": true,
+    "feedback": "Calibration aligns stated confidence with actual hit rate."
+   },
+   {
+    "label": "C",
+    "text": "To avoid stating any confidence level.",
+    "correct": false,
+    "feedback": "Calibration requires stating and tracking confidence."
+   },
+   {
+    "label": "D",
+    "text": "To match the AI's confidence exactly.",
+    "correct": false,
+    "feedback": "Calibration is about your own accuracy, not copying the model."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "When an AI produces a confident forecast, how do the structured-reasoning frameworks help a team respond?",
+  "options": [
+   {
+    "label": "A",
+    "text": "They replace the forecast with the team's gut feeling.",
+    "correct": false,
+    "feedback": "The frameworks discipline the forecast rather than replace it with intuition."
+   },
+   {
+    "label": "B",
+    "text": "They qualify the forecast by surfacing failure modes, checking it against base rates, and scoring the inputs, producing a recommendation with a band and conditions.",
+    "correct": true,
+    "feedback": "The frameworks turn a raw number into a defensible, qualified recommendation."
+   },
+   {
+    "label": "C",
+    "text": "They accept the forecast as long as it is presented confidently.",
+    "correct": false,
+    "feedback": "Confidence is not a reason to accept a forecast unqualified."
+   },
+   {
+    "label": "D",
+    "text": "They delay any decision indefinitely.",
+    "correct": false,
+    "feedback": "The aim is a qualified decision, not paralysis."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "What is the Draft-and-Verify workflow?",
+  "options": [
+   {
+    "label": "A",
+    "text": "Letting the AI both draft and approve the final work.",
+    "correct": false,
+    "feedback": "Verification is the human's job, not the AI's."
+   },
+   {
+    "label": "B",
+    "text": "Using AI to produce a fast first draft, which the human then checks and corrects before it is used.",
+    "correct": true,
+    "feedback": "The human verifies and owns the output the AI drafted."
+   },
+   {
+    "label": "C",
+    "text": "Writing everything manually and asking AI only for spelling.",
+    "correct": false,
+    "feedback": "That understates the drafting role of AI in this workflow."
+   },
+   {
+    "label": "D",
+    "text": "Drafting once and never reviewing.",
+    "correct": false,
+    "feedback": "Verification is the defining second step."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "What is the goal of the Adversarial Review workflow?",
+  "options": [
+   {
+    "label": "A",
+    "text": "To have the AI praise the strengths of your plan.",
+    "correct": false,
+    "feedback": "Adversarial Review seeks challenges, not praise."
+   },
+   {
+    "label": "B",
+    "text": "To have the AI generate the strongest counter-arguments and challenges to your position so you can address them.",
+    "correct": true,
+    "feedback": "It pressure-tests your thinking by surfacing the best objections."
+   },
+   {
+    "label": "C",
+    "text": "To speed up drafting.",
+    "correct": false,
+    "feedback": "That is closer to Draft-and-Verify."
+   },
+   {
+    "label": "D",
+    "text": "To remove the need for human judgment.",
+    "correct": false,
+    "feedback": "It informs judgment rather than removing it."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "How does the Premortem-with-AI workflow use the model?",
+  "options": [
+   {
+    "label": "A",
+    "text": "As the source of the final decision.",
+    "correct": false,
+    "feedback": "The AI generates failure modes; the human decides."
+   },
+   {
+    "label": "B",
+    "text": "As a rapid generator of plausible failure modes, which the team then triages.",
+    "correct": true,
+    "feedback": "The AI expands the set of failure modes quickly for human triage."
+   },
+   {
+    "label": "C",
+    "text": "As a way to avoid running a premortem at all.",
+    "correct": false,
+    "feedback": "It is a way to run one faster, not to skip it."
+   },
+   {
+    "label": "D",
+    "text": "As the tool that writes the final memo.",
+    "correct": false,
+    "feedback": "That belongs to a later step, not the premortem."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "A Decision Audit separates decision quality from outcome quality. Why does this distinction matter?",
+  "options": [
+   {
+    "label": "A",
+    "text": "Because a good outcome always proves the decision was sound.",
+    "correct": false,
+    "feedback": "A good outcome can follow a weak decision through luck."
+   },
+   {
+    "label": "B",
+    "text": "Because outcomes are influenced by luck, so a sound decision can have a bad result and a weak decision a good one.",
+    "correct": true,
+    "feedback": "Judging the reasoning, not just the result, is how you learn correctly."
+   },
+   {
+    "label": "C",
+    "text": "Because only outcomes can be measured.",
+    "correct": false,
+    "feedback": "The reasoning available at the time can and should be reviewed."
+   },
+   {
+    "label": "D",
+    "text": "Because decision quality and outcome quality are the same thing.",
+    "correct": false,
+    "feedback": "The whole point is that they are distinct."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "The Prompt Risk Review screens a prompt against five questions. What is its decision rule?",
+  "options": [
+   {
+    "label": "A",
+    "text": "Send any prompt as long as it is short.",
+    "correct": false,
+    "feedback": "Length is not part of the rule."
+   },
+   {
+    "label": "B",
+    "text": "If the content is confidential, personal, bias-prone, or customer-facing or regulated, and the tool's handling of the input is uncertain, do not send the prompt as drafted.",
+    "correct": true,
+    "feedback": "A yes on a risk question plus uncertainty about the tool stops the send."
+   },
+   {
+    "label": "C",
+    "text": "Only legal teams may ever use AI prompts.",
+    "correct": false,
+    "feedback": "The review is a quick daily habit for everyone, not a legal gate."
+   },
+   {
+    "label": "D",
+    "text": "Always send the prompt and review it afterward.",
+    "correct": false,
+    "feedback": "The review happens before sending, not after."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "What principle did the Moffatt v. Air Canada decision establish for organizations?",
+  "options": [
+   {
+    "label": "A",
+    "text": "Chatbots are separate legal entities, so companies are not responsible for them.",
+    "correct": false,
+    "feedback": "The tribunal rejected this argument."
+   },
+   {
+    "label": "B",
+    "text": "A company is responsible for what its customer-facing AI tells customers.",
+    "correct": true,
+    "feedback": "The ruling held the company accountable for its chatbot's statements."
+   },
+   {
+    "label": "C",
+    "text": "Customers must independently verify everything a chatbot says.",
+    "correct": false,
+    "feedback": "The duty of accuracy rested with the company."
+   },
+   {
+    "label": "D",
+    "text": "Statements made by AI are never binding.",
+    "correct": false,
+    "feedback": "The company was held to the commitment its chatbot made."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "Why does a decision journal record reasoning before the outcome is known?",
+  "options": [
+   {
+    "label": "A",
+    "text": "Because predictions are more accurate when written down.",
+    "correct": false,
+    "feedback": "The purpose is honest capture, not better prediction."
+   },
+   {
+    "label": "B",
+    "text": "Because once the result is known, hindsight rewrites our memory of the reasoning, so capturing it early preserves an honest record for calibration.",
+    "correct": true,
+    "feedback": "The journal locks in the reasoning before hindsight distorts it."
+   },
+   {
+    "label": "C",
+    "text": "Because it is required before any decision is approved.",
+    "correct": false,
+    "feedback": "It is a learning tool, not an approval gate."
+   },
+   {
+    "label": "D",
+    "text": "Because it eliminates the need to track outcomes.",
+    "correct": false,
+    "feedback": "Outcomes are compared against the entry later."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "A defensible decision memo documents the basis of a decision, not just the conclusion. Which elements does it capture?",
+  "options": [
+   {
+    "label": "A",
+    "text": "Only the final recommendation.",
+    "correct": false,
+    "feedback": "The conclusion alone is not defensible."
+   },
+   {
+    "label": "B",
+    "text": "The question, the AI inputs and how they were verified, the evidence, the reasoning, the recommendation, and the residual risks.",
+    "correct": true,
+    "feedback": "These six elements show how the decision was reached."
+   },
+   {
+    "label": "C",
+    "text": "The names of everyone who attended the meeting.",
+    "correct": false,
+    "feedback": "Attendance is not the memo's content."
+   },
+   {
+    "label": "D",
+    "text": "A list of the tools the team owns.",
+    "correct": false,
+    "feedback": "Tool inventory is not part of the memo."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "At a high level, in what order does the capstone apply the course toolkit?",
+  "options": [
+   {
+    "label": "A",
+    "text": "Write the memo, then verify inputs, then reason.",
+    "correct": false,
+    "feedback": "Verification and reasoning precede the memo."
+   },
+   {
+    "label": "B",
+    "text": "Verify the inputs, then apply reasoning discipline, then construct the defensible memo.",
+    "correct": true,
+    "feedback": "The capstone moves from verification to reasoning to the memo."
+   },
+   {
+    "label": "C",
+    "text": "Reason first, then skip verification.",
+    "correct": false,
+    "feedback": "Verification is the first stage, not skipped."
+   },
+   {
+    "label": "D",
+    "text": "Construct the memo and skip the premortem.",
+    "correct": false,
+    "feedback": "Reasoning discipline, including the premortem, comes before the memo."
+   }
+  ],
+  "correct": "B"
+ },
+ {
+  "prompt": "The thirty-day practice plan introduces one habit per week. What is the intended sequence?",
+  "options": [
+   {
+    "label": "A",
+    "text": "Decision audit, then journaling, then prompt screening, then verification.",
+    "correct": false,
+    "feedback": "That reverses the build order."
+   },
+   {
+    "label": "B",
+    "text": "Input verification, then prompt screening, then decision documentation, then a decision audit.",
+    "correct": true,
+    "feedback": "The plan stages verification, screening, journaling, then a single audit."
+   },
+   {
+    "label": "C",
+    "text": "All four habits at once in the first week.",
+    "correct": false,
+    "feedback": "The plan deliberately staggers one habit per week."
+   },
+   {
+    "label": "D",
+    "text": "Prompt screening first, then verification, then auditing, then journaling.",
+    "correct": false,
+    "feedback": "Input verification comes first."
+   }
+  ],
+  "correct": "B"
+ }
+]
