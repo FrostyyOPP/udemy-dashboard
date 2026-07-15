@@ -2,16 +2,16 @@
 // star rating) from the partner analytics Looker dashboard. The dashboard's tile
 // queries return their results as JSON via /querymanager/queries — we capture that
 // and extract the "course_comparison" table (136 courses). Session + headed browser.
-// Writes coursera-metrics-cache.json. Run: npm run coursera:metrics
-import { writeFileSync, existsSync } from 'node:fs';
+// Writes to dashboard.db via db.js's guarded writer. Run: npm run coursera:metrics
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { chromium } from 'playwright';
 import { minimizeWindow } from './browserWindow.js';
+import { writeCourseraMetrics } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const AUTH_FILE = join(__dirname, 'coursera-auth.json');
-const CACHE_FILE = join(__dirname, 'coursera-metrics-cache.json');
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -83,6 +83,10 @@ const courses = best.map((r) => ({
   rating: val(r, 'avg_star_rating'),
 })).filter((c) => c.name);
 
-writeFileSync(CACHE_FILE, JSON.stringify({ scrapedAt: new Date().toISOString(), source: 'Institution Overview (Looker) course_comparison', courses }, null, 2));
+const result = writeCourseraMetrics(courses);
 const totalEnroll = courses.reduce((s, c) => s + (c.enrollments || 0), 0);
-console.log(`✅ ${courses.length} courses with metrics · ${totalEnroll.toLocaleString()} total enrollments → coursera-metrics-cache.json`);
+if (result.guarded) {
+  console.error(`⚠️ Refused to write — only ${courses.length} courses parsed, looks like a partial/failed run. Kept existing data. Re-run after reconnecting.`);
+  process.exit(1);
+}
+console.log(`✅ ${courses.length} courses with metrics · ${totalEnroll.toLocaleString()} total enrollments → dashboard.db`);

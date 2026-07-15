@@ -1,16 +1,16 @@
 // Pulls the Coursera course list for the connected partner (Starweaver) using
 // the session + a HEADED browser. Gets admin course ids from the partner console,
-// then course names via onDemandCourses.v1. Writes coursera-courses-cache.json.
-// Run: npm run coursera:courses   (a browser window opens — leave it)
-import { writeFileSync, existsSync } from 'node:fs';
+// then course names via onDemandCourses.v1. Writes to dashboard.db via db.js's
+// guarded writer. Run: npm run coursera:courses   (a browser window opens — leave it)
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { chromium } from 'playwright';
 import { minimizeWindow } from './browserWindow.js';
+import { writeCourseraCourses } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const AUTH_FILE = join(__dirname, 'coursera-auth.json');
-const CACHE_FILE = join(__dirname, 'coursera-courses-cache.json');
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -77,5 +77,9 @@ for (const id of ids) {
 process.stdout.write('\n');
 await browser.close();
 
-writeFileSync(CACHE_FILE, JSON.stringify({ scrapedAt: new Date().toISOString(), partnerId: 1510, courses }, null, 2));
-console.log(`✅ ${courses.length} Coursera courses → coursera-courses-cache.json`);
+const result = writeCourseraCourses(courses);
+if (result.guarded) {
+  console.error(`⚠️ Refused to write — only ${courses.length} courses found, looks like a partial/failed run. Kept existing data. Re-run after reconnecting.`);
+  process.exit(1);
+}
+console.log(`✅ ${courses.length} Coursera courses → dashboard.db`);

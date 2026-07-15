@@ -118,6 +118,107 @@ export function enrich(c) {
   return { ...c, domain, isFinance, hasPaul, hasGlobecon, sme, above2k };
 }
 
+// Smart search: applies the structured filter returned by POST /api/search/parse.
+const FIELD_GETTERS = {
+  rating: (c) => (c.rating != null ? Number(c.rating) : null),
+  num_reviews: (c) => Number(c.num_reviews) || 0,
+  num_subscribers: (c) => c.num_subscribers,
+  revenue: (c) => c.revenue,
+  captions_count: (c) => capNames(c.caption_locales).length,
+  coupons_count: (c) => (Array.isArray(c.coupons) ? c.coupons.length : 0),
+  is_published: (c) => !!c.is_published,
+  domain: (c) => c.domain || '',
+  title: (c) => c.title || '',
+};
+
+function evalCondition(course, { field, op, value }) {
+  const getter = FIELD_GETTERS[field];
+  if (!getter) return true;
+  const v = getter(course);
+  if (op === 'contains') return String(v).toLowerCase().includes(String(value).toLowerCase());
+  if (v == null) return false; // unknown value never matches a numeric/boolean comparison
+  const nv = typeof value === 'boolean' ? value : (isNaN(Number(value)) ? value : Number(value));
+  switch (op) {
+    case '<': return v < nv;
+    case '<=': return v <= nv;
+    case '>': return v > nv;
+    case '>=': return v >= nv;
+    case '=': return v === nv;
+    case '!=': return v !== nv;
+    default: return true;
+  }
+}
+
+export function applyFilter(rows, spec) {
+  if (!spec || !Array.isArray(spec.conditions) || !spec.conditions.length) return rows;
+  const combine = spec.combinator === 'OR' ? 'some' : 'every';
+  return rows.filter((c) => spec.conditions[combine]((cond) => evalCondition(c, cond)));
+}
+
+// Parses a typed phrase like "rating below 4.3" or "no coupons" into the same
+// {conditions, combinator} shape applyFilter() expects — no network call, so
+// it can run on every keystroke. Falls back to a plain title-contains search
+// when no metric/operator is recognized.
+const FIELD_LABELS = {
+  rating: 'rating', num_reviews: 'review count', num_subscribers: 'students', revenue: 'revenue',
+  captions_count: 'captions', coupons_count: 'coupons', is_published: 'published',
+};
+const OP_LABELS = { '<': 'below', '<=': 'at most', '>': 'above', '>=': 'at least', '=': '=', '!=': '≠' };
+const FIELD_PATTERNS = [
+  ['captions_count', /captions?|subtitles?/i],
+  ['coupons_count', /coupons?/i],
+  ['num_subscribers', /students?|enroll\w*|subscribers?/i],
+  ['num_reviews', /reviews?|ratings?\s*count|number of ratings|total ratings/i],
+  ['revenue', /revenue|earnings?|income/i],
+  ['rating', /ratings?|stars?/i],
+];
+const OPERATOR_PATTERNS = [
+  [/(<=|≤|at most|no more than|maximum|max)/i, '<='],
+  [/(>=|≥|at least|minimum|min)/i, '>='],
+  [/(<|below|under|less than|fewer than|lower than)/i, '<'],
+  [/(>|above|over|more than|greater than|higher than)/i, '>'],
+  [/(!=|not equal)/i, '!='],
+  [/(=|exactly|equal to|equals)/i, '='],
+];
+const matchField = (text) => (FIELD_PATTERNS.find(([, re]) => re.test(text)) || [])[0] || null;
+
+function parseClause(raw) {
+  const clause = raw.trim();
+  if (!clause) return null;
+  if (/\bunpublished\b|\bnot published\b|\bdraft\b/i.test(clause)) return { field: 'is_published', op: '=', value: false, explanation: 'unpublished' };
+  if (/\bpublished\b/i.test(clause)) return { field: 'is_published', op: '=', value: true, explanation: 'published' };
+  const noMatch = clause.match(/\b(?:no|missing|zero|without)\s+(\w+)/i);
+  if (noMatch) {
+    const field = matchField(noMatch[1]);
+    if (field) return { field, op: '=', value: 0, explanation: `no ${FIELD_LABELS[field]}` };
+  }
+  const field = matchField(clause);
+  const numMatch = clause.match(/-?\d+(?:\.\d+)?/);
+  if (field && numMatch) {
+    const opEntry = OPERATOR_PATTERNS.find(([re]) => re.test(clause));
+    if (opEntry) {
+      const op = opEntry[1];
+      const value = Number(numMatch[0]);
+      return { field, op, value, explanation: `${FIELD_LABELS[field]} ${OP_LABELS[op]} ${value}` };
+    }
+  }
+  return null;
+}
+
+export function parseSmartQuery(query) {
+  const q = query.trim();
+  if (!q) return null;
+  const clauses = q.split(/\s+and\s+|,\s*/i).map(parseClause).filter(Boolean);
+  if (clauses.length) {
+    return {
+      conditions: clauses.map(({ field, op, value }) => ({ field, op, value })),
+      combinator: 'AND',
+      explanation: clauses.map((c) => c.explanation).join(' and '),
+    };
+  }
+  return { conditions: [{ field: 'title', op: 'contains', value: q }], combinator: 'AND', explanation: `title contains "${q}"` };
+}
+
 const csvCell = (v) => { const s = v == null ? '' : String(v); return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 export function exportCsv(rows) {
   const headers = ['Title','Domain','Total Ratings','Total Enrollments','Enroll > 2k','Avg Rating','Revenue','Captions','Coupons','Paul','Globecon','SME','URL'];
@@ -133,5 +234,24 @@ export function exportCsv(rows) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = `courses-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// rows: course objects with `recentMonths` = [{month:'2026-07-01', minutes}, ...] descending
+// (this month, last month, 2 months ago) — matches the Minutes Report table's columns.
+export function exportMinutesCsv(rows) {
+  const monthLabel = (iso) => iso ? new Date(iso).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : '';
+  const labels = rows[0]?.recent_months?.map((m) => monthLabel(m.month)) || ['This Month', 'Last Month', '2 Months Ago'];
+  const headers = ['Course', 'Live Date', ...labels];
+  const data = rows.map((c) => [
+    c.title,
+    (c.published_time || c.created) ? new Date(c.published_time || c.created).toISOString().slice(0, 10) : '',
+    ...(c.recent_months || []).map((m) => m.minutes != null ? Math.round(m.minutes) : ''),
+  ]);
+  const csv = [headers, ...data].map((r) => r.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `minutes-consumed-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
   URL.revokeObjectURL(url);
 }

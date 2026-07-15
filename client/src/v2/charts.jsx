@@ -1,5 +1,6 @@
 // Tiny dependency-free inline-SVG charts, themed to the v2 palette.
 // Each takes plain data and renders responsive SVG. No libraries.
+import { useRef, useState } from 'react';
 
 const fmt = (n) => {
   if (n == null) return '—';
@@ -9,26 +10,62 @@ const fmt = (n) => {
   return String(Math.round(n));
 };
 
+const exact = (n, money) => (money ? '$' : '') + (n == null ? '—' : Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 }));
+
+// Shared hover-tooltip: a small absolutely-positioned card following the mouse
+// within a `position:relative` container. Positioned in real pixel coords
+// (via getBoundingClientRect) so it works regardless of the SVG's viewBox scale.
+function ChartTooltip({ hover }) {
+  if (!hover) return null;
+  return (
+    <div className="chart-tooltip" style={{ left: hover.x, top: hover.y }}>
+      <div className="ct-label">{hover.label}</div>
+      <div className="ct-value">{hover.value}</div>
+    </div>
+  );
+}
+
+function useChartHover() {
+  const ref = useRef(null);
+  const [hover, setHover] = useState(null);
+  const show = (e, label, value) => {
+    const box = ref.current?.getBoundingClientRect();
+    if (!box) return;
+    setHover({ label, value, x: e.clientX - box.left, y: e.clientY - box.top });
+  };
+  const hide = () => setHover(null);
+  return { ref, hover, show, hide };
+}
+
 // Horizontal bar chart. data: [{ label, value, color? }]
 export function BarChart({ data = [], money = false, height = 260 }) {
   const rows = data.slice(0, 8);
   const max = Math.max(1, ...rows.map((d) => d.value || 0));
   const rowH = 28, gap = 10, labelW = 150, top = 4;
   const h = Math.max(height, rows.length * (rowH + gap));
+  const { ref, hover, show, hide } = useChartHover();
   return (
-    <svg viewBox={`0 0 600 ${h}`} width="100%" height={h} preserveAspectRatio="xMinYMin meet" role="img">
-      {rows.map((d, i) => {
-        const y = top + i * (rowH + gap);
-        const w = ((d.value || 0) / max) * (600 - labelW - 60);
-        return (
-          <g key={i}>
-            <text x="0" y={y + rowH / 2 + 4} fontSize="12" fill="#4b5563">{(d.label || '').slice(0, 22)}</text>
-            <rect x={labelW} y={y} width={Math.max(2, w)} height={rowH} rx="5" fill={d.color || '#a435f0'} opacity="0.9" />
-            <text x={labelW + Math.max(2, w) + 6} y={y + rowH / 2 + 4} fontSize="12" fontWeight="600" fill="#1a202c">{money ? '$' : ''}{fmt(d.value)}</text>
-          </g>
-        );
-      })}
-    </svg>
+    <div ref={ref} style={{ position: 'relative' }} onMouseLeave={hide}>
+      <svg viewBox={`0 0 600 ${h}`} width="100%" height={h} preserveAspectRatio="xMinYMin meet" role="img">
+        {rows.map((d, i) => {
+          const y = top + i * (rowH + gap);
+          const w = ((d.value || 0) / max) * (600 - labelW - 60);
+          return (
+            <g key={i}
+              onMouseMove={(e) => show(e, d.label, exact(d.value, money))}
+              onMouseEnter={(e) => show(e, d.label, exact(d.value, money))}
+              style={{ cursor: 'pointer' }}
+            >
+              <rect x="0" y={y - 1} width="600" height={rowH + 2} fill="transparent" />
+              <text x="0" y={y + rowH / 2 + 4} fontSize="12" fill="#4b5563">{(d.label || '').slice(0, 22)}</text>
+              <rect x={labelW} y={y} width={Math.max(2, w)} height={rowH} rx="5" fill={d.color || '#a435f0'} opacity={hover?.label === d.label ? 1 : 0.9} />
+              <text x={labelW + Math.max(2, w) + 6} y={y + rowH / 2 + 4} fontSize="12" fontWeight="600" fill="#1a202c">{money ? '$' : ''}{fmt(d.value)}</text>
+            </g>
+          );
+        })}
+      </svg>
+      <ChartTooltip hover={hover} />
+    </div>
   );
 }
 
@@ -44,16 +81,26 @@ export function Donut({ data = [], money = false, size = 220 }) {
     return `M${x1},${y1} A${R},${R} 0 ${large} 1 ${x2},${y2} L${x3},${y3} A${r},${r} 0 ${large} 0 ${x4},${y4} Z`;
   };
   const segs = data.map((d) => { const a1 = a0 + ((d.value || 0) / total) * Math.PI * 2; const s = { d, path: arc(a1) }; a0 = a1; return s; });
+  const { ref, hover, show, hide } = useChartHover();
   return (
-    <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+    <div ref={ref} style={{ position: 'relative', display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }} onMouseLeave={hide}>
       <svg viewBox="0 0 220 220" width={size} height={size} role="img">
-        {segs.map((s, i) => <path key={i} d={s.path} fill={s.d.color} />)}
+        {segs.map((s, i) => (
+          <path key={i} d={s.path} fill={s.d.color} opacity={hover?.label === s.d.label ? 0.8 : 1}
+            style={{ cursor: 'pointer' }}
+            onMouseMove={(e) => show(e, s.d.label, `${exact(s.d.value, money)} (${Math.round((s.d.value / total) * 100)}%)`)}
+            onMouseEnter={(e) => show(e, s.d.label, `${exact(s.d.value, money)} (${Math.round((s.d.value / total) * 100)}%)`)}
+          />
+        ))}
         <text x="110" y="106" textAnchor="middle" fontSize="13" fill="#4b5563">Total</text>
         <text x="110" y="128" textAnchor="middle" fontSize="18" fontWeight="700" fill="#1a202c">{money ? '$' : ''}{fmt(total)}</text>
       </svg>
       <div style={{ display: 'grid', gap: 8, flex: 1, minWidth: 160 }}>
         {data.map((d, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}
+            onMouseMove={(e) => show(e, d.label, `${exact(d.value, money)} (${Math.round((d.value / total) * 100)}%)`)}
+            onMouseEnter={(e) => show(e, d.label, `${exact(d.value, money)} (${Math.round((d.value / total) * 100)}%)`)}
+          >
             <span style={{ width: 10, height: 10, borderRadius: 3, background: d.color }} />
             <span style={{ flex: 1, color: '#374151' }}>{d.label}</span>
             <b>{money ? '$' : ''}{fmt(d.value)}</b>
@@ -61,6 +108,7 @@ export function Donut({ data = [], money = false, size = 220 }) {
           </div>
         ))}
       </div>
+      <ChartTooltip hover={hover} />
     </div>
   );
 }
@@ -69,20 +117,29 @@ export function Donut({ data = [], money = false, size = 220 }) {
 export function Histogram({ data = [], color = '#a435f0', height = 240 }) {
   const max = Math.max(1, ...data.map((d) => d.value || 0));
   const n = data.length || 1, bw = 480 / n, pad = 10;
+  const { ref, hover, show, hide } = useChartHover();
   return (
-    <svg viewBox="0 0 520 260" width="100%" height={height} preserveAspectRatio="xMinYMin meet" role="img">
-      {data.map((d, i) => {
-        const bh = ((d.value || 0) / max) * 200;
-        const x = 20 + i * bw, y = 220 - bh;
-        return (
-          <g key={i}>
-            <rect x={x + pad / 2} y={y} width={bw - pad} height={bh} rx="5" fill={color} opacity="0.9" />
-            <text x={x + bw / 2} y="240" textAnchor="middle" fontSize="12" fill="#4b5563">{d.label}</text>
-            <text x={x + bw / 2} y={y - 6} textAnchor="middle" fontSize="11" fontWeight="600" fill="#1a202c">{d.value || 0}</text>
-          </g>
-        );
-      })}
-    </svg>
+    <div ref={ref} style={{ position: 'relative' }} onMouseLeave={hide}>
+      <svg viewBox="0 0 520 260" width="100%" height={height} preserveAspectRatio="xMinYMin meet" role="img">
+        {data.map((d, i) => {
+          const bh = ((d.value || 0) / max) * 200;
+          const x = 20 + i * bw, y = 220 - bh;
+          return (
+            <g key={i}
+              style={{ cursor: 'pointer' }}
+              onMouseMove={(e) => show(e, d.label, exact(d.value, false))}
+              onMouseEnter={(e) => show(e, d.label, exact(d.value, false))}
+            >
+              <rect x={x} y="0" width={bw} height="240" fill="transparent" />
+              <rect x={x + pad / 2} y={y} width={bw - pad} height={bh} rx="5" fill={color} opacity={hover?.label === d.label ? 1 : 0.9} />
+              <text x={x + bw / 2} y="240" textAnchor="middle" fontSize="12" fill="#4b5563">{d.label}</text>
+              <text x={x + bw / 2} y={y - 6} textAnchor="middle" fontSize="11" fontWeight="600" fill="#1a202c">{d.value || 0}</text>
+            </g>
+          );
+        })}
+      </svg>
+      <ChartTooltip hover={hover} />
+    </div>
   );
 }
 
@@ -98,18 +155,29 @@ export function LineChart({ data = [], money = false, height = 240, color = '#10
   const path = rows.map((d, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(d.value || 0).toFixed(1)}`).join(' ');
   const area = `${path} L${x(rows.length - 1).toFixed(1)},${padT + plotH} L${x(0).toFixed(1)},${padT + plotH} Z`;
   const step = Math.max(1, Math.ceil(rows.length / 8));
+  const { ref, hover, show, hide } = useChartHover();
   return (
-    <svg viewBox={`0 0 ${w} ${height}`} width="100%" height={height} preserveAspectRatio="xMinYMin meet" role="img">
-      <path d={area} fill={color} opacity="0.08" />
-      <path d={path} fill="none" stroke={color} strokeWidth="2.5" />
-      {rows.map((d, i) => (i % step === 0 || i === rows.length - 1) ? (
-        <g key={i}>
-          <circle cx={x(i)} cy={y(d.value || 0)} r="3" fill={color} />
-          <text x={x(i)} y={height - 8} textAnchor="middle" fontSize="10" fill="#4b5563">{d.label}</text>
-        </g>
-      ) : null)}
-      {rows.length > 0 && <text x={x(rows.length - 1)} y={y(rows[rows.length - 1].value || 0) - 10} textAnchor="end" fontSize="11" fontWeight="600" fill="#1a202c">{money ? '$' : ''}{fmt(rows[rows.length - 1].value)}</text>}
-    </svg>
+    <div ref={ref} style={{ position: 'relative' }} onMouseLeave={hide}>
+      <svg viewBox={`0 0 ${w} ${height}`} width="100%" height={height} preserveAspectRatio="xMinYMin meet" role="img">
+        <path d={area} fill={color} opacity="0.08" />
+        <path d={path} fill="none" stroke={color} strokeWidth="2.5" />
+        {rows.map((d, i) => (i % step === 0 || i === rows.length - 1) ? (
+          <text key={`l${i}`} x={x(i)} y={height - 8} textAnchor="middle" fontSize="10" fill="#4b5563">{d.label}</text>
+        ) : null)}
+        {rows.map((d, i) => (
+          <g key={i}
+            style={{ cursor: 'pointer' }}
+            onMouseMove={(e) => show(e, d.label, exact(d.value, money))}
+            onMouseEnter={(e) => show(e, d.label, exact(d.value, money))}
+          >
+            <circle cx={x(i)} cy={y(d.value || 0)} r="10" fill="transparent" />
+            <circle cx={x(i)} cy={y(d.value || 0)} r={hover?.label === d.label ? 5 : 3} fill={color} />
+          </g>
+        ))}
+        {rows.length > 0 && <text x={x(rows.length - 1)} y={y(rows[rows.length - 1].value || 0) - 10} textAnchor="end" fontSize="11" fontWeight="600" fill="#1a202c">{money ? '$' : ''}{fmt(rows[rows.length - 1].value)}</text>}
+      </svg>
+      <ChartTooltip hover={hover} />
+    </div>
   );
 }
 

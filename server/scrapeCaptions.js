@@ -1,18 +1,19 @@
 // Collects caption/subtitle languages per course (not in the instructor API).
 // Uses your connected session + a HEADED browser (Cloudflare blocks headless on
 // the api-2.0 data endpoints). Pulls the bulk taught-courses endpoint, then maps
-// results to instructor-API course ids by slug. Writes caption-cache.json.
+// results to instructor-API course ids by slug. Writes to dashboard.db via
+// db.js's guarded writer (refuses empty/shrunk runs instead of wiping the table).
 // Run: npm run scrape:captions   (a browser window opens briefly — leave it)
-import { writeFileSync, existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { chromium } from 'playwright';
 import { minimizeWindow } from './browserWindow.js';
 import { udemyGet } from './udemyClient.js';
+import { writeCaptions } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const AUTH_FILE = join(__dirname, 'udemy-auth.json');
-const CACHE_FILE = join(__dirname, 'caption-cache.json');
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -81,15 +82,11 @@ while (true) {
   page2 += 1;
 }
 
-// Safeguard: a scrape that read 0 courses is an error state (Cloudflare block /
-// session issue), NOT "you have no captions". Never overwrite a good cache with
-// empty data — keep the existing cache and exit non-zero so callers can retry.
-if (Object.keys(perCourse).length === 0) {
-  const hadData = existsSync(CACHE_FILE) && Object.keys(JSON.parse(readFileSync(CACHE_FILE, 'utf8')).perCourse || {}).length > 0;
-  console.error(`⚠️ Scrape returned 0 courses — not overwriting caption-cache.json${hadData ? ' (kept existing data)' : ''}. Likely Cloudflare/session; retry.`);
+const result = writeCaptions(perCourse);
+if (result.guarded) {
+  console.error('⚠️ Scrape returned too few courses vs what’s already stored — kept existing data. Likely Cloudflare/session; retry.');
   process.exit(1);
 }
-writeFileSync(CACHE_FILE, JSON.stringify({ scrapedAt: new Date().toISOString(), perCourse }, null, 2));
 const withCaps = Object.values(perCourse).filter((v) => v.length).length;
-console.log(`✅ Captions for ${Object.keys(perCourse).length} courses (${withCaps} have subtitles) → caption-cache.json`);
+console.log(`✅ Captions for ${Object.keys(perCourse).length} courses (${withCaps} have subtitles) → dashboard.db`);
 console.log('   Refresh the dashboard to see the Captions column.');

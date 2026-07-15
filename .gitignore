@@ -13,6 +13,10 @@ udemy-cookies.json
 coursera-auth.json
 coursera-cookies.json
 coursera-*-cache.json
+futurelearn-auth.json
+futurelearn-discovery.json
+go1-auth.json
+go1-discovery.json
 revenue-cache.json
 revenue-discovery.json
 caption-cache.json
@@ -22,6 +26,9 @@ discover-output.json
 .cdp-profile/
 transcript-cache.json
 last-update.json
+server/dashboard.db
+server/dashboard.db-wal
+server/dashboard.db-shm
 switch-to-ngrok.sh
 caption-files/
 caption-files-*/

@@ -1,17 +1,18 @@
 // Pulls ACTIVE coupons per course (not in the instructor API). Uses the connected
 // session + a HEADED browser. Endpoint: /api-2.0/courses/{numId}/coupons-v2/?invalid=false
-// Writes coupon-cache.json: { perCourse: { <courseId>: [{code,...}] } }.
+// Writes to dashboard.db (courses table) via db.js's guarded writer — a run that
+// covers far fewer courses than last time is refused rather than wiping the table.
 // Run: npm run scrape:coupons   (a browser window opens — leave it)
-import { writeFileSync, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { chromium } from 'playwright';
 import { minimizeWindow } from './browserWindow.js';
 import { udemyGet } from './udemyClient.js';
+import { writeCoupons } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const AUTH_FILE = join(__dirname, 'udemy-auth.json');
-const CACHE_FILE = join(__dirname, 'coupon-cache.json');
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -84,13 +85,16 @@ for (const c of courses) {
   if (id) perCourse[id] = list;
   if (list.length) withCoupons++;
   done++;
-  if (done % 5 === 0) writeFileSync(CACHE_FILE, JSON.stringify({ scrapedAt: new Date().toISOString(), perCourse }, null, 2));
   process.stdout.write(`\r  ${done}/${courses.length} · ${withCoupons} with active coupons`);
   await sleep(1000 + Math.floor(Math.random() * 800));
 }
 process.stdout.write('\n');
 await browser.close();
 
-writeFileSync(CACHE_FILE, JSON.stringify({ scrapedAt: new Date().toISOString(), perCourse }, null, 2));
+const result = writeCoupons(perCourse);
 const totalCoupons = Object.values(perCourse).reduce((s, l) => s + l.length, 0);
-console.log(`✅ ${withCoupons} courses have active coupons (${totalCoupons} total) → coupon-cache.json`);
+if (result.guarded) {
+  console.error(`⚠️ Refused to write — only ${Object.keys(perCourse).length} courses covered, looks like a partial/failed run. Kept existing data. Re-run after reconnecting.`);
+  process.exit(1);
+}
+console.log(`✅ ${withCoupons} courses have active coupons (${totalCoupons} total) → dashboard.db`);

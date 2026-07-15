@@ -1,17 +1,17 @@
 // Reads the Coursera partner "Institution Overview" Looker dashboard KPI tiles
 // (launched courses/specializations/etc.) via session + headed browser.
 // Detailed enrollment/revenue live in Looker interactive charts (not text-scrapable);
-// use Looker's "Download data" for those. Writes coursera-overview-cache.json.
-// Run: npm run coursera:overview
-import { writeFileSync, existsSync } from 'node:fs';
+// use Looker's "Download data" for those. Writes to dashboard.db via db.js's
+// guarded writer. Run: npm run coursera:overview
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { chromium } from 'playwright';
 import { minimizeWindow } from './browserWindow.js';
+import { writeCourseraOverview } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const AUTH_FILE = join(__dirname, 'coursera-auth.json');
-const CACHE_FILE = join(__dirname, 'coursera-overview-cache.json');
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -49,6 +49,10 @@ for (const f of page.frames()) {
 }
 await browser.close();
 
-writeFileSync(CACHE_FILE, JSON.stringify({ scrapedAt: new Date().toISOString(), source: 'Institution Overview (Looker)', kpis }, null, 2));
+const result = writeCourseraOverview(kpis);
+if (result.guarded) {
+  console.error('⚠️ Refused to write — KPIs parsed looks like a partial/failed run. Kept existing data. Re-run after reconnecting.');
+  process.exit(1);
+}
 console.log('✅ Overview KPIs:', JSON.stringify(kpis));
-console.log('   Saved coursera-overview-cache.json. (Detailed enrollment/revenue need Looker CSV export.)');
+console.log('   Saved to dashboard.db. (Detailed enrollment/revenue need Looker CSV export.)');

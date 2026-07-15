@@ -1,16 +1,18 @@
 // Pulls instructor earnings (lifetime total, monthly series, AND per-course)
 // using the connected session + a HEADED browser (Cloudflare blocks headless on
-// api-2.0). Writes revenue-cache.json. Run: npm run scrape:revenue
-import { writeFileSync, existsSync } from 'node:fs';
+// api-2.0). Writes to dashboard.db via db.js's guarded writer — refuses to save
+// if the total is missing or per-course coverage collapsed vs last time.
+// Run: npm run scrape:revenue
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { chromium } from 'playwright';
 import { minimizeWindow } from './browserWindow.js';
 import { udemyGet } from './udemyClient.js';
+import { writeRevenue } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const AUTH_FILE = join(__dirname, 'udemy-auth.json');
-const CACHE_FILE = join(__dirname, 'revenue-cache.json');
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -99,12 +101,13 @@ for (const [numId, amount] of Object.entries(perNum)) {
   if (id) perCourse[id] = amount;
 }
 
-writeFileSync(
-  CACHE_FILE,
-  JSON.stringify({ scrapedAt: new Date().toISOString(), currency, total: totalAmount, monthly, perCourse }, null, 2)
-);
+const result = writeRevenue({ total: totalAmount, currency, monthly, perCourse });
 
 const mapped = Object.keys(perCourse).length;
 const earning = Object.values(perCourse).filter((v) => v > 0).length;
-console.log(`✅ Total ${currency} ${totalAmount?.toLocaleString()} · per-course mapped for ${mapped} courses (${earning} earning) → revenue-cache.json`);
+if (result.guarded) {
+  console.error(`⚠️ Refused to write — total or per-course coverage (${mapped} courses) looks like a partial/failed run. Kept existing data. Re-run after reconnecting.`);
+  process.exit(1);
+}
+console.log(`✅ Total ${currency} ${totalAmount?.toLocaleString()} · per-course mapped for ${mapped} courses (${earning} earning) → dashboard.db`);
 console.log('   Refresh the dashboard — the Earnings report now has per-course Total Earning.');

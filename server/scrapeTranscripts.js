@@ -1,15 +1,15 @@
 // Scrapes public Udemy course pages for closed-caption / transcript languages.
-// Writes transcript-cache.json keyed by course id.
+// Writes to dashboard.db (merge upsert — never deletes existing entries).
 // Run: node scrapeTranscripts.js
-import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { chromium } from 'playwright';
 import { minimizeWindow } from './browserWindow.js';
 import { udemyGet } from './udemyClient.js';
+import { writeTranscripts, readTranscripts } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const CACHE_FILE = join(__dirname, 'transcript-cache.json');
 const AUTH_FILE = join(__dirname, 'udemy-auth.json');
 const FORCE = process.argv.includes('--force');
 const UA =
@@ -144,12 +144,8 @@ async function getAllPublishedCourses() {
   return all;
 }
 
-let transcripts = {};
-if (existsSync(CACHE_FILE)) {
-  try { transcripts = JSON.parse(readFileSync(CACHE_FILE, 'utf8')).transcripts || {}; } catch {}
-}
-const save = () =>
-  writeFileSync(CACHE_FILE, JSON.stringify({ scrapedAt: new Date().toISOString(), transcripts }, null, 2));
+let transcripts = readTranscripts().transcripts;
+const save = () => writeTranscripts(transcripts);
 
 console.log('Fetching published course list…');
 const courses = await getAllPublishedCourses();

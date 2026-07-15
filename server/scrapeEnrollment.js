@@ -1,14 +1,14 @@
 // Scrapes public Udemy course pages for enrollment counts (not in the API).
-// Writes enrollment-cache.json keyed by course id. Run: npm run scrape:enrollment
-import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+// Writes to dashboard.db (merge upsert — never deletes existing counts).
+// Run: npm run scrape:enrollment
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { chromium } from 'playwright';
 import { minimizeWindow } from './browserWindow.js';
 import { udemyGet } from './udemyClient.js';
+import { writeEnrollment, readEnrollment } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const CACHE_FILE = join(__dirname, 'enrollment-cache.json');
 // Sequential — Cloudflare blocks parallel page loads. Reusing one context keeps
 // the cf_clearance cookie so only the first page pays the challenge cost.
 const FORCE = process.argv.includes('--force'); // re-scrape even if already cached
@@ -64,15 +64,9 @@ async function scrapeOne(browser, course) {
   }
 }
 
-// Load prior cache so re-runs skip what we already have and never lose data.
-let counts = {};
-if (existsSync(CACHE_FILE)) {
-  try {
-    counts = JSON.parse(readFileSync(CACHE_FILE, 'utf8')).counts || {};
-  } catch {}
-}
-const save = () =>
-  writeFileSync(CACHE_FILE, JSON.stringify({ scrapedAt: new Date().toISOString(), counts }, null, 2));
+// Load prior counts so re-runs skip what we already have and never lose data.
+let counts = readEnrollment().counts;
+const save = () => writeEnrollment(counts);
 
 console.log('Fetching course list from the API…');
 const courses = await getAllCourses();

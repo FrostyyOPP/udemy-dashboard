@@ -5,18 +5,22 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import { udemyGet } from './udemyClient.js';
 import { SUPPORTED_LANGS, startJob as startCaptionJob, getJob as getCaptionJob } from './localizeCaptions.js';
+import {
+  readEnrollment, readRevenue, readCaptions, readCoupons, readTranscripts, setTranscript,
+  readCourseraCourses, readCourseraMetrics, readCourseraOverview, readCourseraInstructorCheck, latestUpdatedAt,
+  readFutureLearnCourses, readGo1Courses, readEngagement,
+} from './db.js';
 
 const app = express();
 const PORT = process.env.PORT || 5055;
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// CACHE_FILE can point at a Render persistent disk; defaults to the repo copy.
-const CACHE_FILE = process.env.CACHE_FILE || join(__dirname, 'enrollment-cache.json');
-const REVENUE_FILE = process.env.REVENUE_FILE || join(__dirname, 'revenue-cache.json');
-const TRANSCRIPT_FILE = process.env.TRANSCRIPT_FILE || join(__dirname, 'transcript-cache.json');
 const AUTH_FILE = join(__dirname, 'udemy-auth.json');
 const COURSERA_AUTH_FILE = join(__dirname, 'coursera-auth.json');
+const FUTURELEARN_AUTH_FILE = join(__dirname, 'futurelearn-auth.json');
+const GO1_AUTH_FILE = join(__dirname, 'go1-auth.json');
 
 // Convert a Cookie-Editor JSON export into a Playwright session (storageState).
 const sameSiteMap = { no_restriction: 'None', none: 'None', lax: 'Lax', strict: 'Strict' };
@@ -36,58 +40,7 @@ function cookiesToState(list) {
   return { cookies, origins: [] };
 }
 
-// Read scraped enrollment counts (fresh each call so a re-scrape shows up).
-function enrollmentCache() {
-  if (!existsSync(CACHE_FILE)) return { counts: {}, scrapedAt: null };
-  try {
-    return JSON.parse(readFileSync(CACHE_FILE, 'utf8'));
-  } catch {
-    return { counts: {}, scrapedAt: null };
-  }
-}
-
-// Read scraped transcript languages per course.
-function transcriptCache() {
-  if (!existsSync(TRANSCRIPT_FILE)) return { transcripts: {}, scrapedAt: null };
-  try {
-    return JSON.parse(readFileSync(TRANSCRIPT_FILE, 'utf8'));
-  } catch {
-    return { transcripts: {}, scrapedAt: null };
-  }
-}
-
-// Read scraped revenue (per-course + total). Absent on the public deploy.
-function revenueCache() {
-  if (!existsSync(REVENUE_FILE)) return { perCourse: {}, total: null, currency: 'USD' };
-  try {
-    return JSON.parse(readFileSync(REVENUE_FILE, 'utf8'));
-  } catch {
-    return { perCourse: {}, total: null, currency: 'USD' };
-  }
-}
-
-// Read scraped caption languages: { perCourse: { <courseId>: ["en","es",...] } }.
-const CAPTIONS_FILE = process.env.CAPTIONS_FILE || join(__dirname, 'caption-cache.json');
-function captionsCache() {
-  if (!existsSync(CAPTIONS_FILE)) return { perCourse: {} };
-  try {
-    return JSON.parse(readFileSync(CAPTIONS_FILE, 'utf8'));
-  } catch {
-    return { perCourse: {} };
-  }
-}
-
-// Read scraped active coupons: { perCourse: { <courseId>: [{code,...}] } }.
-const COUPONS_FILE = process.env.COUPONS_FILE || join(__dirname, 'coupon-cache.json');
-function couponsCache() {
-  if (!existsSync(COUPONS_FILE)) return { perCourse: {} };
-  try {
-    return JSON.parse(readFileSync(COUPONS_FILE, 'utf8'));
-  } catch {
-    return { perCourse: {} };
-  }
-}
-
+app.use(compression());
 app.use(cors());
 app.use(express.json());
 
@@ -118,23 +71,10 @@ app.get('/api/health', (req, res) => {
 // When was the data last refreshed? Newest timestamp across all caches + the
 // last scheduled `npm run update` run.
 app.get('/api/last-update', (req, res) => {
-  const files = [
-    'revenue-cache.json', 'coupon-cache.json', 'caption-cache.json', 'enrollment-cache.json',
-    'coursera-metrics-cache.json', 'coursera-overview-cache.json',
-  ];
-  let newest = null;
-  for (const f of files) {
-    const p = join(__dirname, f);
-    if (!existsSync(p)) continue;
-    try {
-      const t = JSON.parse(readFileSync(p, 'utf8')).scrapedAt;
-      if (t && (!newest || new Date(t) > new Date(newest))) newest = t;
-    } catch {}
-  }
   let run = null;
   const lu = join(__dirname, 'last-update.json');
   if (existsSync(lu)) { try { run = JSON.parse(readFileSync(lu, 'utf8')); } catch {} }
-  res.json({ updatedAt: newest, lastRun: run });
+  res.json({ updatedAt: latestUpdatedAt(), lastRun: run });
 });
 
 // --- Udemy account connection (session) ----------------------------------
@@ -143,9 +83,9 @@ app.get('/api/connection', (req, res) => {
   res.json({
     connected: existsSync(AUTH_FILE),
     data: {
-      enrollment: existsSync(CACHE_FILE),
-      revenue: existsSync(REVENUE_FILE),
-      captions: existsSync(join(__dirname, 'caption-cache.json')),
+      enrollment: Object.keys(readEnrollment().counts).length > 0,
+      revenue: readRevenue().total != null,
+      captions: Object.keys(readCaptions().perCourse).length > 0,
     },
   });
 });
@@ -198,35 +138,96 @@ app.post('/api/coursera/disconnect', (req, res) => {
   res.json({ connected: false });
 });
 
-// Coursera course list (from the scraped cache).
+// --- FutureLearn account connection (session) -----------------------------
+app.get('/api/futurelearn/connection', (req, res) => {
+  res.json({ connected: existsSync(FUTURELEARN_AUTH_FILE) });
+});
+
+app.post('/api/futurelearn/connect', (req, res) => {
+  const state = cookiesToState(req.body?.cookies ?? req.body);
+  const isFutureLearn = state.cookies.some((c) => /futurelearn\.com$/.test(c.domain));
+  if (!state.cookies.length || !isFutureLearn) {
+    return res.status(400).json({
+      error: 'That does not look like a futurelearn.com cookie export. Export from futurelearn.com while signed in.',
+      cookieCount: state.cookies.length,
+    });
+  }
+  writeFileSync(FUTURELEARN_AUTH_FILE, JSON.stringify(state, null, 2));
+  res.json({ connected: true, cookieCount: state.cookies.length });
+});
+
+app.post('/api/futurelearn/disconnect', (req, res) => {
+  try { if (existsSync(FUTURELEARN_AUTH_FILE)) unlinkSync(FUTURELEARN_AUTH_FILE); } catch {}
+  res.json({ connected: false });
+});
+
+// --- Go1 account connection (session) -------------------------------------
+app.get('/api/go1/connection', (req, res) => {
+  res.json({ connected: existsSync(GO1_AUTH_FILE) });
+});
+
+app.post('/api/go1/connect', (req, res) => {
+  const state = cookiesToState(req.body?.cookies ?? req.body);
+  const isGo1 = state.cookies.some((c) => /go1\.com$/.test(c.domain));
+  if (!state.cookies.length || !isGo1) {
+    return res.status(400).json({
+      error: 'That does not look like a go1.com cookie export. Export from your mygo1.com dashboard while signed in.',
+      cookieCount: state.cookies.length,
+    });
+  }
+  writeFileSync(GO1_AUTH_FILE, JSON.stringify(state, null, 2));
+  res.json({ connected: true, cookieCount: state.cookies.length });
+});
+
+app.post('/api/go1/disconnect', (req, res) => {
+  try { if (existsSync(GO1_AUTH_FILE)) unlinkSync(GO1_AUTH_FILE); } catch {}
+  res.json({ connected: false });
+});
+
+// Coursera course list (from the DB).
 app.get('/api/coursera/courses', (req, res) => {
-  const f = join(__dirname, 'coursera-courses-cache.json');
-  if (!existsSync(f)) return res.json({ courses: [], scrapedAt: null });
-  try { res.json(JSON.parse(readFileSync(f, 'utf8'))); }
-  catch { res.json({ courses: [], scrapedAt: null }); }
+  res.json(readCourseraCourses());
 });
 
 // Coursera partner overview KPIs (from the Looker dashboard).
 app.get('/api/coursera/overview', (req, res) => {
-  const f = join(__dirname, 'coursera-overview-cache.json');
-  if (!existsSync(f)) return res.json({ kpis: {}, scrapedAt: null });
-  try { res.json(JSON.parse(readFileSync(f, 'utf8'))); }
-  catch { res.json({ kpis: {}, scrapedAt: null }); }
+  res.json(readCourseraOverview());
 });
 
 // Monthly revenue history (real, from Udemy's own share-holders API — full
 // lifetime series, not a growing snapshot). Powers the "Revenue Over Time" chart.
 app.get('/api/revenue/monthly', (req, res) => {
-  const { monthly, currency, scrapedAt } = revenueCache();
+  const { monthly, currency, scrapedAt } = readRevenue();
   res.json({ monthly: monthly || [], currency: currency || 'USD', scrapedAt: scrapedAt || null });
 });
 
+// Engagement: total minutes watched, active students, monthly trend, and
+// per-course Udemy Business coverage (course id -> {minutesTaught, isUdemyBusiness}).
+app.get('/api/engagement', (req, res) => {
+  res.json(readEngagement());
+});
+
 // Coursera per-course metrics (enrollments/completions/rating).
+const normalizeName = (s) => (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
 app.get('/api/coursera/metrics', (req, res) => {
-  const f = join(__dirname, 'coursera-metrics-cache.json');
-  if (!existsSync(f)) return res.json({ courses: [], scrapedAt: null });
-  try { res.json(JSON.parse(readFileSync(f, 'utf8'))); }
-  catch { res.json({ courses: [], scrapedAt: null }); }
+  const metrics = readCourseraMetrics();
+  const { names: instructorNames } = readCourseraInstructorCheck();
+  const instructorSet = new Set(instructorNames.map(normalizeName));
+  res.json({
+    ...metrics,
+    courses: metrics.courses.map((c) => ({ ...c, hasStarweaverInstructor: instructorSet.has(normalizeName(c.name)) })),
+  });
+});
+
+// FutureLearn course list (title, code, category, status, run date, wishlist, enrollment).
+app.get('/api/futurelearn/courses', (req, res) => {
+  res.json(readFutureLearnCourses());
+});
+
+// Go1 course-level learning content (enrolments/completions/minutes) — a single
+// month's snapshot (Go1 doesn't expose a lifetime aggregate to partners).
+app.get('/api/go1/courses', (req, res) => {
+  res.json(readGo1Courses());
 });
 
 // Bulk-create coupons. User-triggered write. dryRun:true previews only.
@@ -297,19 +298,50 @@ app.get('/api/captions/refresh-cache', (req, res) => res.json(captionRefresh));
 const COURSE_FIELDS =
   '@default,published_title,rating,num_reviews,headline,is_published,created,published_time,visible_instructors';
 
+// The full course walk below hits the live Udemy API sequentially, one page at
+// a time — course title/rating/published-status barely change minute to minute,
+// so cache the walked list briefly rather than re-fetching it (which took
+// 4.5-10.5s per dashboard load, dwarfing everything else). Per-course revenue/
+// captions/coupons/engagement still come from the local DB fresh on every request.
+let coursesWalkCache = { results: null, fetchedAt: 0 };
+const COURSES_CACHE_TTL_MS = 5 * 60 * 1000;
+async function walkAllCourses() {
+  const now = Date.now();
+  if (coursesWalkCache.results && (now - coursesWalkCache.fetchedAt) < COURSES_CACHE_TTL_MS) {
+    return coursesWalkCache.results;
+  }
+  const results = [];
+  let page = 1;
+  while (true) {
+    const data = await udemyGet('/taught-courses/courses/', {
+      page, page_size: 100, 'fields[course]': COURSE_FIELDS,
+    });
+    results.push(...(data.results || []));
+    if (!data.next) break;
+    page += 1;
+    if (page > 50) break; // safety stop
+  }
+  coursesWalkCache = { results, fetchedAt: now };
+  return results;
+}
+
 // List your taught courses. By default fetches ALL pages (168 is small);
 // pass ?page=N for a single page.
 app.get('/api/courses', wrap(async (req, res) => {
-  const { counts, scrapedAt } = enrollmentCache();
-  const { perCourse, total: totalRevenue, currency } = revenueCache();
-  const { perCourse: captions } = captionsCache();
-  const { perCourse: coupons } = couponsCache();
+  const { counts, scrapedAt } = readEnrollment();
+  const { perCourse, total: totalRevenue, currency } = readRevenue();
+  const { perCourse: captions } = readCaptions();
+  const { perCourse: coupons } = readCoupons();
+  const { perCourse: engagement } = readEngagement();
   const enrich = (c) => ({
     ...c,
     num_subscribers: counts[c.id] ?? null,
     revenue: perCourse[c.id] ?? null,
     caption_locales: captions[c.id] ?? null,
     coupons: coupons[c.id] ?? null,
+    minutes_taught: engagement[c.id]?.minutesTaught ?? null,
+    is_udemy_business: engagement[c.id]?.isUdemyBusiness ?? null,
+    recent_months: engagement[c.id]?.recentMonths ?? null,
   });
 
   if (req.query.page) {
@@ -325,20 +357,8 @@ app.get('/api/courses', wrap(async (req, res) => {
     return res.json(data);
   }
 
-  // Walk every page and return the combined list.
-  const results = [];
-  let page = 1;
-  while (true) {
-    const data = await udemyGet('/taught-courses/courses/', {
-      page,
-      page_size: 100,
-      'fields[course]': COURSE_FIELDS,
-    });
-    results.push(...(data.results || []));
-    if (!data.next) break;
-    page += 1;
-    if (page > 50) break; // safety stop
-  }
+  // Walk every page and return the combined list (cached — see walkAllCourses).
+  const results = await walkAllCourses();
   res.json({
     count: results.length,
     results: results.map(enrich),
@@ -383,10 +403,6 @@ async function saveTranscript(req, res) {
   if (!courseId && !slug) return res.status(400).json({ error: 'courseId or slug required' });
   if (!Array.isArray(languages)) return res.status(400).json({ error: 'languages must be an array' });
 
-  let cache = { scrapedAt: new Date().toISOString(), transcripts: {} };
-  if (existsSync(TRANSCRIPT_FILE)) {
-    try { cache = JSON.parse(readFileSync(TRANSCRIPT_FILE, 'utf8')); } catch {}
-  }
   let resolvedId = courseId;
   if (!resolvedId && slug) {
     let page = 1;
@@ -401,9 +417,7 @@ async function saveTranscript(req, res) {
     }
   }
   if (!resolvedId) return res.status(404).json({ error: 'Course not found' });
-  cache.transcripts[resolvedId] = languages;
-  cache.scrapedAt = new Date().toISOString();
-  writeFileSync(TRANSCRIPT_FILE, JSON.stringify(cache, null, 2));
+  setTranscript(resolvedId, languages);
   const isHtml = (req.headers.accept || '').includes('text/html');
   if (isHtml) {
     const msg = languages.length ? languages.join(', ') : '(no captions on this course)';
@@ -425,7 +439,7 @@ app.post('/api/transcripts', express.json(), wrap(async (req, res) => {
 
 // Transcript status — how many courses have been captured
 app.get('/api/transcripts/status', wrap(async (req, res) => {
-  const { transcripts, scrapedAt } = transcriptCache();
+  const { transcripts, scrapedAt } = readTranscripts();
   const captured = Object.keys(transcripts).length;
   const withData = Object.values(transcripts).filter(v => Array.isArray(v) && v.length > 0).length;
   res.json({ captured, withData, scrapedAt });
@@ -452,7 +466,14 @@ app.get('/bookmarklet', (req, res) => {
 // relative /api calls work with no proxy.
 const clientDist = join(__dirname, '..', 'client', 'dist');
 if (existsSync(clientDist)) {
-  app.use(express.static(clientDist));
+  // Vite content-hashes filenames under /assets/ (e.g. index-Bn-n1T3e.js), so those
+  // are safe to cache for a year — a new build always gets a new filename. index.html
+  // itself must stay revalidate-on-every-load so users always get the latest build.
+  app.use(express.static(clientDist, {
+    setHeaders(res, path) {
+      res.setHeader('Cache-Control', path.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache');
+    },
+  }));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api')) return next();
     res.sendFile(join(clientDist, 'index.html'));
