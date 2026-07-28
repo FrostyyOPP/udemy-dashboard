@@ -8,7 +8,7 @@ import ConnectCoursera from '../ConnectCoursera.jsx';
 import ConnectFutureLearn from '../ConnectFutureLearn.jsx';
 import ConnectGo1 from '../ConnectGo1.jsx';
 import { BarChart, Donut, Histogram, LineChart, ChartPlaceholder } from './charts.jsx';
-import { enrich, classifyDomain, DOMAIN_COLOR, capNames, usd, exportCsv, exportMinutesCsv, applyFilter, parseSmartQuery } from './data.js';
+import { enrich, classifyDomain, DOMAIN_COLOR, capNames, usd, exportCsv, exportMinutesCsv, exportCourseraCsv, exportFutureLearnCsv, exportGo1Csv, applyFilter, parseSmartQuery } from './data.js';
 
 const num = (n) => (n == null ? '—' : Math.round(n).toLocaleString());
 const relTime = (iso) => {
@@ -35,13 +35,17 @@ const ICONS = {
   coupons: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a3 3 0 1 0 0 6" /><path d="M22 9a3 3 0 1 1 0 6" /><rect x="2" y="6" width="20" height="12" rx="2" /><line x1="12" y1="6" x2="12" y2="18" strokeDasharray="2 2" /></svg>,
   settings: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>,
 };
-const NAV = [['overview', 'Overview'], ['courses', 'Courses'], ['earnings', 'Earnings'], ['minutes', 'Minutes'], ['captions', 'Captions'], ['coupons', 'Coupons']];
+const NAV = [['overview', 'Overview'], ['watchlist', 'Watchlist'], ['courses', 'Courses'], ['earnings', 'Earnings'], ['minutes', 'Minutes'], ['captions', 'Captions'], ['coupons', 'Coupons']];
 
 export default function AppV2() {
   const [raw, setRaw] = useState(null);
   const [coursera, setCoursera] = useState([]);
+  const [courseraCin, setCourseraCin] = useState([]);
+  const [courseraReviews, setCourseraReviews] = useState({});
+  const [courseraCinReviews, setCourseraCinReviews] = useState({});
   const [futurelearn, setFuturelearn] = useState([]);
   const [go1, setGo1] = useState({ courses: [], month: null });
+  const [go1Lifetime, setGo1Lifetime] = useState({ courses: [], firstMonth: null, lastMonth: null, monthCount: 0 });
   const [conn, setConn] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [view, setView] = useState('overview');
@@ -51,15 +55,30 @@ export default function AppV2() {
   const [dark, setDark] = useState(false);
   const [monthly, setMonthly] = useState([]);
   const [engagement, setEngagement] = useState({ totalMinutes: null, activeStudents: null, monthly: [] });
+  const [bookmarks, setBookmarks] = useState([]);
+
+  const loadBookmarks = () => fetch('/api/bookmarks').then((r) => r.json()).then((d) => setBookmarks(d.bookmarks || [])).catch(() => {});
+  const bookmarkSet = useMemo(() => new Set(bookmarks.map((b) => `${b.platform}:${b.courseKey}`)), [bookmarks]);
+  const isBookmarked = (platform, courseKey) => bookmarkSet.has(`${platform}:${courseKey}`);
+  const toggleBookmark = (platform, courseKey, title) => {
+    const method = isBookmarked(platform, courseKey) ? 'DELETE' : 'POST';
+    fetch('/api/bookmarks', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ platform, courseKey, title }) })
+      .then(loadBookmarks).catch(() => {});
+  };
 
   const load = () => {
     fetch('/api/courses').then((r) => r.json()).then(setRaw).catch(() => setRaw({ results: [] }));
     fetch('/api/connection').then((r) => r.json()).then(setConn).catch(() => {});
     fetch('/api/last-update').then((r) => r.json()).then((d) => setLastUpdate(d.updatedAt)).catch(() => {});
+    loadBookmarks();
     fetch('/api/coursera/metrics').then((r) => r.json()).then((d) => setCoursera(d.courses || d.results || [])).catch(() => {});
+    fetch('/api/coursera-cin/metrics').then((r) => r.json()).then((d) => setCourseraCin(d.courses || d.results || [])).catch(() => {});
+    fetch('/api/coursera/reviews').then((r) => r.json()).then((d) => setCourseraReviews(d.bySlug || {})).catch(() => {});
+    fetch('/api/coursera-cin/reviews').then((r) => r.json()).then((d) => setCourseraCinReviews(d.bySlug || {})).catch(() => {});
     fetch('/api/revenue/monthly').then((r) => r.json()).then((d) => setMonthly(d.monthly || [])).catch(() => {});
     fetch('/api/futurelearn/courses').then((r) => r.json()).then((d) => setFuturelearn(d.courses || [])).catch(() => {});
     fetch('/api/go1/courses').then((r) => r.json()).then((d) => setGo1({ courses: d.courses || [], month: d.month || null })).catch(() => {});
+    fetch('/api/go1/lifetime').then((r) => r.json()).then((d) => setGo1Lifetime({ courses: d.courses || [], firstMonth: d.firstMonth || null, lastMonth: d.lastMonth || null, monthCount: d.monthCount || 0 })).catch(() => {});
     fetch('/api/engagement').then((r) => r.json()).then(setEngagement).catch(() => {});
   };
   useEffect(load, []);
@@ -91,31 +110,35 @@ export default function AppV2() {
         <main className="main-content">
           <button className="btn btn-secondary menu-btn" style={{ marginBottom: 16 }} onClick={() => setSideOpen((o) => !o)}>☰ Menu</button>
           <div className="platform-tabs">
-            {[['all', 'All Platforms'], ['udemy', 'Udemy'], ['coursera', 'Coursera'], ['futurelearn', 'FutureLearn'], ['go1', 'Go1']].map(([k, l]) => (
-              <button key={k} className={'ptab' + (platform === k ? ' active' : '') + (k === 'coursera' ? ' p-coursera' : '')} onClick={() => setPlatform(k)}>{l}</button>
+            {[['all', 'All Platforms'], ['udemy', 'Udemy'], ['coursera', 'Coursera'], ['coursera_cin', 'Coursera CIN'], ['futurelearn', 'FutureLearn'], ['go1', 'Go1']].map(([k, l]) => (
+              <button key={k} className={'ptab' + (platform === k ? ' active' : '') + (k === 'coursera' || k === 'coursera_cin' ? ' p-coursera' : '')} onClick={() => setPlatform(k)}>{l}</button>
             ))}
           </div>
-          {view === 'overview' && <Overview udemy={udemy} coursera={coursera} futurelearn={futurelearn} go1={go1.courses} totalRevenue={totalRevenue} platform={platform} monthly={monthly} engagement={engagement} />}
+          {view === 'overview' && <Overview udemy={udemy} coursera={coursera} courseraCin={courseraCin} futurelearn={futurelearn} go1={go1.courses} go1Lifetime={go1Lifetime} totalRevenue={totalRevenue} platform={platform} monthly={monthly} engagement={engagement} />}
+          {view === 'watchlist' && <Watchlist bookmarks={bookmarks} udemy={udemy} coursera={coursera} courseraCin={courseraCin} futurelearn={futurelearn} go1={go1Lifetime.courses.length ? go1Lifetime.courses : go1.courses} isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} onOpen={setSelected} />}
           {view === 'courses' && (
-            platform === 'coursera' ? <CourseraView rows={coursera} />
-            : platform === 'futurelearn' ? <FutureLearnView rows={futurelearn} />
-            : platform === 'go1' ? <Go1View rows={go1.courses} month={go1.month} />
-            : <Courses udemy={udemy} totalRevenue={totalRevenue} onOpen={setSelected} onRefresh={load} />
+            platform === 'coursera' ? <CourseraView rows={coursera} reviewsBySlug={courseraReviews} isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} />
+            : platform === 'coursera_cin' ? <CourseraView rows={courseraCin} label="Coursera CIN" showInstructorCheck={false} reviewsBySlug={courseraCinReviews} platform="coursera_cin" isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} />
+            : platform === 'futurelearn' ? <FutureLearnView rows={futurelearn} isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} />
+            : platform === 'go1' ? <Go1View rows={go1.courses} month={go1.month} lifetime={go1Lifetime} isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} />
+            : <Courses udemy={udemy} totalRevenue={totalRevenue} onOpen={setSelected} onRefresh={load} isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} />
           )}
           {view === 'earnings' && (platform === 'coursera'
-            ? <PlatformUnavailable platform={platform} title="Earnings" note="Coursera revenue isn't exposed via the Partner API — earnings tracking is Udemy-only." />
+            ? <CourseraEarnings rows={coursera} label="Coursera" />
+            : platform === 'coursera_cin'
+            ? <CourseraEarnings rows={courseraCin} label="Coursera CIN" />
             : platform === 'futurelearn'
             ? <PlatformUnavailable platform={platform} title="Earnings" note="FutureLearn doesn't expose partner revenue — earnings tracking is Udemy-only." />
             : platform === 'go1'
             ? <PlatformUnavailable platform={platform} title="Earnings" note="Your Go1 account doesn't have revenue reporting available yet — earnings tracking is Udemy-only." />
-            : <Earnings udemy={udemy} totalRevenue={totalRevenue} monthly={monthly} />)}
-          {view === 'minutes' && (platform === 'coursera' || platform === 'futurelearn' || platform === 'go1'
+            : <Earnings udemy={udemy} totalRevenue={totalRevenue} monthly={monthly} platform={platform} coursera={coursera} />)}
+          {view === 'minutes' && (platform === 'coursera' || platform === 'coursera_cin' || platform === 'futurelearn' || platform === 'go1'
             ? <PlatformUnavailable platform={platform} title="Minutes" note="Minutes-consumed tracking is a Udemy feature — this platform's courses aren't covered here." />
             : <MinutesReport udemy={udemy} />)}
-          {view === 'captions' && (platform === 'coursera' || platform === 'futurelearn' || platform === 'go1'
+          {view === 'captions' && (platform === 'coursera' || platform === 'coursera_cin' || platform === 'futurelearn' || platform === 'go1'
             ? <PlatformUnavailable platform={platform} title="Captions" note="Caption localization is a Udemy feature — this platform's courses aren't covered here." />
             : <Captions udemy={udemy} onRefresh={load} />)}
-          {view === 'coupons' && (platform === 'coursera' || platform === 'futurelearn' || platform === 'go1'
+          {view === 'coupons' && (platform === 'coursera' || platform === 'coursera_cin' || platform === 'futurelearn' || platform === 'go1'
             ? <PlatformUnavailable platform={platform} title="Coupons" note="Coupon tracking is a Udemy feature — this platform doesn't have promotional codes tracked here." />
             : <Coupons udemy={udemy} />)}
           {view === 'settings' && <Settings conn={conn} dark={dark} setDark={setDark} lastUpdate={lastUpdate} onRefresh={load} />}
@@ -129,42 +152,73 @@ export default function AppV2() {
 // ---------------- Overview ----------------
 const coursraPct = (c) => { const v = c.completionRate; return v == null ? null : (v <= 1 ? v * 100 : v); };
 
-function Overview({ udemy, coursera, futurelearn, go1, totalRevenue, platform, monthly, engagement }) {
+function Overview({ udemy, coursera, courseraCin, futurelearn, go1, go1Lifetime, totalRevenue, platform, monthly, engagement }) {
   const isUdemy = platform === 'udemy';
   const isCoursera = platform === 'coursera';
+  const isCourseraCin = platform === 'coursera_cin';
   const isFutureLearn = platform === 'futurelearn';
   const isGo1 = platform === 'go1';
   const isAll = platform === 'all';
 
   const courStats = { count: coursera.length, enroll: coursera.reduce((s, c) => s + (c.enrollments || 0), 0) };
+  // Coursera CIN is a separate partner account under the same login — kept out
+  // of "All Platforms" totals entirely (it isn't part of Starweaver's own
+  // teaching portfolio), only shown when its own tab is selected.
+  const courCinStats = { count: courseraCin.length, enroll: courseraCin.reduce((s, c) => s + (c.enrollments || 0), 0) };
   const flStats = {
     count: futurelearn.length,
     known: futurelearn.filter((c) => c.enrollment != null).length,
     enroll: futurelearn.reduce((s, c) => s + (c.enrollment || 0), 0),
     live: futurelearn.filter((c) => c.status === 'In progress').length,
   };
-  const go1Stats = { count: go1.length, enroll: go1.reduce((s, c) => s + (c.enrolments || 0), 0), month: go1[0]?.month ?? null };
+  // Lifetime = every month Go1 has data for, summed per course (Go1 itself only ever
+  // returns one month at a time — see scrapeGo1History.js). "month"/"monthEnroll" keep
+  // the current-month figure around as a secondary reference point.
+  const go1Stats = {
+    count: go1Lifetime.courses.length || go1.length,
+    enroll: go1Lifetime.courses.reduce((s, c) => s + (c.enrolments || 0), 0),
+    month: go1[0]?.month ?? null,
+    monthEnroll: go1.reduce((s, c) => s + (c.enrolments || 0), 0),
+    firstMonth: go1Lifetime.firstMonth, monthCount: go1Lifetime.monthCount,
+  };
   const uEnroll = udemy.reduce((s, c) => s + (c.num_subscribers || 0), 0);
   const reviews = udemy.reduce((s, c) => s + (c.num_reviews || 0), 0);
   const rated = udemy.filter((c) => c.rating);
   const cRated = coursera.filter((c) => c.rating);
+  const cCinRated = courseraCin.filter((c) => c.rating);
   const uAvg = rated.length ? rated.reduce((s, c) => s + Number(c.rating) * (c.num_reviews || 1), 0) / rated.reduce((s, c) => s + (c.num_reviews || 1), 0) : 0;
   const cAvg = cRated.length ? cRated.reduce((s, c) => s + Number(c.rating), 0) / cRated.length : 0;
-  const courses = isUdemy ? udemy.length : isCoursera ? courStats.count : isFutureLearn ? flStats.count : isGo1 ? go1Stats.count
+  const cCinAvg = cCinRated.length ? cCinRated.reduce((s, c) => s + Number(c.rating), 0) / cCinRated.length : 0;
+  const courses = isUdemy ? udemy.length : isCoursera ? courStats.count : isCourseraCin ? courCinStats.count : isFutureLearn ? flStats.count : isGo1 ? go1Stats.count
     : udemy.length + courStats.count + flStats.count + go1Stats.count;
-  const enroll = isUdemy ? uEnroll : isCoursera ? courStats.enroll : isFutureLearn ? flStats.enroll : isGo1 ? go1Stats.enroll
-    : uEnroll + courStats.enroll + flStats.enroll; // Go1 is a monthly snapshot, not a lifetime total — excluded from the "all" sum
+  const enroll = isUdemy ? uEnroll : isCoursera ? courStats.enroll : isCourseraCin ? courCinStats.enroll : isFutureLearn ? flStats.enroll : isGo1 ? go1Stats.enroll
+    : uEnroll + courStats.enroll + flStats.enroll + go1Stats.enroll;
   const withPaul = udemy.filter((c) => c.hasPaul).length;
   const finGap = udemy.filter((c) => c.isFinance && !c.hasGlobecon).length;
   const ubCount = udemy.filter((c) => c.is_udemy_business).length;
   const minutesWatched = engagement.totalMinutes != null ? Math.round(engagement.totalMinutes) : null;
 
-  const ratingValue = isCoursera ? cAvg : (isFutureLearn || isGo1) ? null : uAvg;
-  const ratingTrend = isCoursera ? `across ${cRated.length} rated courses`
+  const ratingValue = isCoursera ? cAvg : isCourseraCin ? cCinAvg : (isFutureLearn || isGo1) ? null : uAvg;
+  const ratingTrend = isCoursera ? `across ${cRated.length} rated courses` : isCourseraCin ? `across ${cCinRated.length} rated courses`
     : isFutureLearn ? 'not offered by FutureLearn' : isGo1 ? 'not offered by Go1'
     : isAll ? `Udemy only — based on ${num(reviews)} reviews` : `based on ${num(reviews)} reviews`;
-  const revenueValue = (isCoursera || isFutureLearn || isGo1) ? '—' : (totalRevenue == null ? '—' : usd(totalRevenue));
-  const revenueTrend = isCoursera ? 'not tracked for Coursera' : isFutureLearn ? 'not exposed to partners' : isGo1 ? 'not yet available' : 'Udemy earnings';
+  // Real per-course revenue, manually imported from partner revenue reports
+  // (Coursera exposes none via any API) — covers only the courses present in
+  // whatever report was last imported, not the full catalog.
+  const courseraRevenueTotal = coursera.reduce((s, c) => s + (c.revenue || 0), 0);
+  const courseraRevenueCount = coursera.filter((c) => c.revenue != null).length;
+  const courseraCinRevenueTotal = courseraCin.reduce((s, c) => s + (c.revenue || 0), 0);
+  const courseraCinRevenueCount = courseraCin.filter((c) => c.revenue != null).length;
+  const revenueValue = isCoursera ? (courseraRevenueCount ? usd(courseraRevenueTotal) : '—')
+    : isCourseraCin ? (courseraCinRevenueCount ? usd(courseraCinRevenueTotal) : '—')
+    : (isFutureLearn || isGo1) ? '—'
+    : isAll ? ((totalRevenue == null && !courseraRevenueCount) ? '—' : usd((totalRevenue || 0) + courseraRevenueTotal))
+    : (totalRevenue == null ? '—' : usd(totalRevenue));
+  const revenueTrend = isCoursera ? (courseraRevenueCount ? `from manually imported report — ${courseraRevenueCount}/${coursera.length} courses` : 'not tracked for Coursera')
+    : isCourseraCin ? (courseraCinRevenueCount ? `from manually imported report — ${courseraCinRevenueCount}/${courseraCin.length} courses` : 'not tracked for Coursera CIN')
+    : isFutureLearn ? 'not exposed to partners' : isGo1 ? 'not yet available'
+    : isAll ? `Udemy + Coursera (${courseraRevenueCount}/${coursera.length} courses) — FutureLearn/Go1 not tracked`
+    : 'Udemy earnings';
 
   let charts;
   if (isFutureLearn) {
@@ -183,12 +237,17 @@ function Overview({ udemy, coursera, futurelearn, go1, totalRevenue, platform, m
       </div>
     );
   } else if (isGo1) {
-    const byEnroll = [...go1].filter((c) => c.enrolments > 0).sort((a, b) => b.enrolments - a.enrolments).slice(0, 8)
+    const byEnroll = [...go1Lifetime.courses].filter((c) => c.enrolments > 0).sort((a, b) => b.enrolments - a.enrolments).slice(0, 8)
       .map((c) => ({ label: c.name, value: c.enrolments, color: '#0c9bae' }));
+    const byMonth = [...go1].filter((c) => c.enrolments > 0).sort((a, b) => b.enrolments - a.enrolments).slice(0, 8)
+      .map((c) => ({ label: c.name, value: c.enrolments, color: '#ea7112' }));
     charts = (
       <div className="charts-section">
-        <h2 className="section-title">📊 Go1 Content Studio{go1Stats.month ? ` (${go1Stats.month})` : ''}</h2>
-        <div className="chart-card">{byEnroll.length ? <BarChart data={byEnroll} /> : <div className="chart-placeholder">No course-level data yet — Go1's Content Studio dashboard has been unreliable to automate. See the Go1 tab under Courses for status.</div>}</div>
+        <h2 className="section-title">📊 Go1 Content Studio — lifetime{go1Stats.firstMonth ? ` (since ${go1Stats.firstMonth})` : ''}</h2>
+        <div className="charts-grid">
+          <div className="chart-card"><h3>Top Courses by Enrolments (lifetime)</h3>{byEnroll.length ? <BarChart data={byEnroll} /> : <div className="chart-placeholder">No course-level data yet — see the Go1 tab under Courses for status.</div>}</div>
+          <div className="chart-card"><h3>Top Courses by Enrolments ({go1Stats.month || 'this month'})</h3>{byMonth.length ? <BarChart data={byMonth} /> : <div className="chart-placeholder">No data</div>}</div>
+        </div>
       </div>
     );
   } else if (isCoursera) {
@@ -205,6 +264,34 @@ function Overview({ udemy, coursera, futurelearn, go1, totalRevenue, platform, m
       <>
         <div className="charts-section">
           <h2 className="section-title">📊 Enrollment &amp; Completion</h2>
+          <div className="charts-grid">
+            <div className="chart-card"><h3>Enrollments by Course (top 8)</h3>{byCourse.length ? <BarChart data={byCourse} /> : <div className="chart-placeholder">No data</div>}</div>
+            <div className="chart-card"><h3>Enrollments by Domain</h3>{donut.length ? <Donut data={donut} /> : <div className="chart-placeholder">No data</div>}</div>
+          </div>
+        </div>
+        <div className="charts-section">
+          <h2 className="section-title">🎯 Portfolio Quality</h2>
+          <div className="charts-grid">
+            <div className="chart-card"><h3>Rating Distribution</h3><Histogram data={buckets} color="#0066cc" /></div>
+            <div className="chart-card"><h3>Completion Rate Distribution</h3><Histogram data={compBuckets} color="#0066cc" /></div>
+          </div>
+        </div>
+      </>
+    );
+  } else if (isCourseraCin) {
+    const byCourse = [...courseraCin].filter((c) => c.enrollments > 0).sort((a, b) => b.enrollments - a.enrollments).slice(0, 8)
+      .map((c) => ({ label: c.name, value: c.enrollments, color: '#0066cc' }));
+    const domEnr = {};
+    courseraCin.forEach((c) => { if (c.enrollments > 0) domEnr[c.domain || 'Other'] = (domEnr[c.domain || 'Other'] || 0) + c.enrollments; });
+    const donut = Object.entries(domEnr).map(([label, value]) => ({ label, value, color: DOMAIN_COLOR[label] || '#9ca3af' })).sort((a, b) => b.value - a.value).slice(0, 8);
+    const buckets = [['< 3.5', 0, 3.5], ['3.5–4', 3.5, 4], ['4–4.5', 4, 4.5], ['4.5–5', 4.5, 5.01]]
+      .map(([label, lo, hi]) => ({ label, value: cCinRated.filter((c) => Number(c.rating) >= lo && Number(c.rating) < hi).length }));
+    const compBuckets = [['0–50%', 0, 50], ['50–70%', 50, 70], ['70–85%', 70, 85], ['85–100%', 85, 101]]
+      .map(([label, lo, hi]) => { const p = coursraPct; return { label, value: courseraCin.filter((c) => { const v = p(c); return v != null && v >= lo && v < hi; }).length }; });
+    charts = (
+      <>
+        <div className="charts-section">
+          <h2 className="section-title">📊 Enrollment &amp; Completion (Coursera CIN)</h2>
           <div className="charts-grid">
             <div className="chart-card"><h3>Enrollments by Course (top 8)</h3>{byCourse.length ? <BarChart data={byCourse} /> : <div className="chart-placeholder">No data</div>}</div>
             <div className="chart-card"><h3>Enrollments by Domain</h3>{donut.length ? <Donut data={donut} /> : <div className="chart-placeholder">No data</div>}</div>
@@ -293,15 +380,15 @@ function Overview({ udemy, coursera, futurelearn, go1, totalRevenue, platform, m
   return (
     <>
       <Header crumb="OVERVIEW" title="Dashboard" sub={
-        isUdemy ? 'Your Udemy portfolio' : isCoursera ? 'Your Coursera portfolio' : isFutureLearn ? 'Your FutureLearn portfolio'
+        isUdemy ? 'Your Udemy portfolio' : isCoursera ? 'Your Coursera portfolio' : isCourseraCin ? 'Coursera CIN partner portfolio' : isFutureLearn ? 'Your FutureLearn portfolio'
         : isGo1 ? 'Your Go1 portfolio' : 'Your teaching portfolio at a glance'
       } actions={isUdemy || isAll ? <button className="btn btn-primary" onClick={() => exportCsv(udemy)}>↓ Export CSV</button> : undefined} />
       <div className="kpi-grid">
         <Kpi icon="📚" bg="rgba(0,47,167,.09)" fg="#002fa7" label="Total Courses" value={num(courses)}
           trend={isAll ? `${udemy.length} Udemy · ${courStats.count} Coursera · ${flStats.count} FutureLearn · ${go1Stats.count} Go1`
-            : isUdemy ? 'Udemy' : isCoursera ? 'Coursera' : isFutureLearn ? 'FutureLearn' : 'Go1'} />
+            : isUdemy ? 'Udemy' : isCoursera ? 'Coursera' : isCourseraCin ? 'Coursera CIN' : isFutureLearn ? 'FutureLearn' : 'Go1'} />
         <Kpi icon="👥" bg="#cce5ff" fg="#0066cc" label="Total Enrollments" value={num(enroll)}
-          trend={isAll ? 'Udemy + Coursera + FutureLearn (Go1 is monthly, not included)' : isFutureLearn ? `known — ${flStats.known}/${flStats.count} courses` : isGo1 ? `this month${go1Stats.month ? ` (${go1Stats.month})` : ''}` : 'across the portfolio'} />
+          trend={isAll ? 'Udemy + Coursera + FutureLearn + Go1 (all lifetime)' : isFutureLearn ? `known — ${flStats.known}/${flStats.count} courses` : isGo1 ? `lifetime${go1Stats.firstMonth ? ` (since ${go1Stats.firstMonth})` : ''}` : 'across the portfolio'} />
         <Kpi icon="💵" bg="#dcfce7" fg="#10b981" label="Lifetime Revenue" value={revenueValue} trend={revenueTrend} />
         <Kpi icon="⭐" bg="#fef3c7" fg="#f59e0b" label="Average Rating" value={ratingValue ? ratingValue.toFixed(2) : '—'} trend={ratingTrend} />
         {(isUdemy || isAll) && (
@@ -325,7 +412,7 @@ function Overview({ udemy, coursera, futurelearn, go1, totalRevenue, platform, m
   );
 }
 
-const PLATFORM_LABELS = { coursera: 'Coursera', futurelearn: 'FutureLearn', go1: 'Go1' };
+const PLATFORM_LABELS = { coursera: 'Coursera', coursera_cin: 'Coursera CIN', futurelearn: 'FutureLearn', go1: 'Go1' };
 function PlatformUnavailable({ title, note, platform }) {
   return (
     <>
@@ -344,13 +431,81 @@ const COLS = [
   ['revenue', 'Revenue', 'num'], ['minutes_taught', 'Minutes Watched', 'num'], ['caption_locales', 'Captions', 'none'], ['coupons', 'Coupons', 'num'],
   ['is_udemy_business', 'Udemy Business', 'none'], ['hasPaul', 'Paul', 'none'], ['hasGlobecon', 'Globecon', 'none'], ['sme', 'SME', 'none'],
 ];
-function Courses({ udemy, totalRevenue, onOpen, onRefresh }) {
+// One render function per COLS entry, same order — lets the column picker
+// show/hide a <td> without duplicating the cell markup elsewhere.
+const CELL_RENDERERS = [
+  (c, key) => <td key={key} style={{ fontWeight: 500, minWidth: 200 }}>{c.title}</td>,
+  (c, key) => <td key={key}><span className="platform-badge" style={{ background: (DOMAIN_COLOR[c.domain] || '#9ca3af') + '22', color: DOMAIN_COLOR[c.domain] || '#6b7280' }}>{c.domain}</span></td>,
+  (c, key) => <td key={key} style={{ textAlign: 'right' }}>{num(c.num_reviews) === '—' ? 0 : num(c.num_reviews)}</td>,
+  (c, key) => <td key={key} style={{ textAlign: 'right' }}>{c.num_subscribers != null ? num(c.num_subscribers) : <span className="muted">—</span>}</td>,
+  (c, key) => <td key={key} style={{ textAlign: 'center' }}>{c.above2k === 'Yes' ? <span className="pill ok">Yes</span> : c.above2k === 'No' ? <span className="pill draft">No</span> : <span className="muted">N/A</span>}</td>,
+  (c, key) => <td key={key} style={{ textAlign: 'right' }}>{c.rating ? <span className="rating-stars">★ {Number(c.rating).toFixed(2)}</span> : '—'}</td>,
+  (c, key) => <td key={key} style={{ textAlign: 'right', fontWeight: 600, color: c.revenue ? '#10b981' : '#9ca3af' }}>{c.revenue ? usd(c.revenue) : '—'}</td>,
+  (c, key) => <td key={key} style={{ textAlign: 'right' }}>{c.minutes_taught ? num(Math.round(c.minutes_taught)) : <span className="muted">—</span>}</td>,
+  (c, key) => <td key={key} className="muted" style={{ fontSize: 13 }} title={capNames(c.caption_locales).join(', ')}>{capNames(c.caption_locales).slice(0, 3).join(', ') || '—'}{capNames(c.caption_locales).length > 3 ? ` +${capNames(c.caption_locales).length - 3}` : ''}</td>,
+  (c, key) => <td key={key} style={{ textAlign: 'right' }}>{couponFraction(c)}</td>,
+  (c, key) => <td key={key} style={{ textAlign: 'center' }}>{c.is_udemy_business ? <span title="Udemy Business" style={{ color: '#ea7112' }}>✓</span> : <span className="muted">—</span>}</td>,
+  (c, key) => <td key={key} style={{ textAlign: 'center' }}>{c.hasPaul ? <span title="Active" style={{ color: '#10b981' }}>✓</span> : <span title="Not on course" style={{ color: '#f59e0b' }}>✗</span>}</td>,
+  (c, key) => <td key={key} style={{ textAlign: 'center' }}>{c.isFinance ? (c.hasGlobecon ? <span style={{ color: '#10b981' }}>✓</span> : <span title="Missing" style={{ color: '#ef4444' }}>✗</span>) : <span className="muted">—</span>}</td>,
+  (c, key) => <td key={key} className="muted" style={{ fontSize: 13, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={(c.sme || []).join(', ')}>{(c.sme || []).join(', ') || '—'}</td>,
+];
+const COLS_STORAGE_KEY = 'dcx-courses-visible-cols';
+function loadVisibleCols() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLS_STORAGE_KEY));
+    if (Array.isArray(saved) && saved.length) return new Set(saved);
+  } catch { /* ignore malformed/missing storage */ }
+  return new Set(COLS.map(([key]) => key));
+}
+function ColumnPicker({ visible, setVisible }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+  const toggle = (key) => setVisible((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) { if (next.size > 1) next.delete(key); } else next.add(key);
+    localStorage.setItem(COLS_STORAGE_KEY, JSON.stringify([...next]));
+    return next;
+  });
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button className="btn btn-secondary" onClick={() => setOpen((o) => !o)}>☰ Columns</button>
+      {open && (
+        <div className="col-picker-menu">
+          {COLS.map(([key, label]) => (
+            <label key={key} className="col-picker-item">
+              <input type="checkbox" checked={visible.has(key)} disabled={key === 'title'} onChange={() => toggle(key)} />
+              {label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+// "N active · M left" — "left" is Udemy's rolling monthly creation allowance
+// (remaining_coupon_count: resets monthly, not a fixed lifetime cap).
+function couponFraction(c) {
+  if (!Array.isArray(c.coupons)) return <span className="muted">—</span>;
+  const active = c.coupons.length;
+  if (c.remaining_coupon_count == null) return active || '0';
+  return <span title="Left = more coupons Udemy will let you create this month on this course">{active} active · {c.remaining_coupon_count} left</span>;
+}
+function Courses({ udemy, totalRevenue, onOpen, onRefresh, isBookmarked, toggleBookmark }) {
   const [q, setQ] = useState('');
   const [domain, setDomain] = useState('All');
   const [sort, setSort] = useState({ key: 'num_reviews', dir: -1 });
+  const [visibleCols, setVisibleCols] = useState(loadVisibleCols);
   const domains = useMemo(() => ['All', ...[...new Set(udemy.map((c) => c.domain))].sort()], [udemy]);
   const searchSpec = useMemo(() => parseSmartQuery(q), [q]);
   const clearSearch = () => setQ('');
+  const shownCols = useMemo(() => COLS.filter(([key]) => visibleCols.has(key)), [visibleCols]);
+  const shownRenderers = useMemo(() => COLS.map((col, i) => [col[0], CELL_RENDERERS[i]]).filter(([key]) => visibleCols.has(key)), [visibleCols]);
 
   const rows = useMemo(() => {
     let r = udemy;
@@ -388,6 +543,7 @@ function Courses({ udemy, totalRevenue, onOpen, onRefresh }) {
             onKeyDown={(e) => { if (e.key === 'Escape') clearSearch(); }}
           />
           <select value={domain} onChange={(e) => setDomain(e.target.value)} style={{ width: 'auto', minWidth: 180 }}>{domains.map((d) => <option key={d}>{d}</option>)}</select>
+          <ColumnPicker visible={visibleCols} setVisible={setVisibleCols} />
           <span className="muted">{rows.length} shown</span>
         </div>
         {searchSpec?.conditions.some((c) => c.field !== 'title') && (
@@ -398,25 +554,13 @@ function Courses({ udemy, totalRevenue, onOpen, onRefresh }) {
           </div>
         )}
         <div className="table-scroll">
-          <table>
-            <thead><tr>{COLS.map(th)}</tr></thead>
+          <table className="wide-table">
+            <thead><tr><th className="no-sort"></th>{shownCols.map(th)}</tr></thead>
             <tbody>
               {rows.map((c) => (
                 <tr key={c.id} className="click" onClick={() => onOpen(c)}>
-                  <td style={{ fontWeight: 500, minWidth: 200 }}>{c.title}</td>
-                  <td><span className="platform-badge" style={{ background: (DOMAIN_COLOR[c.domain] || '#9ca3af') + '22', color: DOMAIN_COLOR[c.domain] || '#6b7280' }}>{c.domain}</span></td>
-                  <td style={{ textAlign: 'right' }}>{num(c.num_reviews) === '—' ? 0 : num(c.num_reviews)}</td>
-                  <td style={{ textAlign: 'right' }}>{c.num_subscribers != null ? num(c.num_subscribers) : <span className="muted">—</span>}</td>
-                  <td style={{ textAlign: 'center' }}>{c.above2k === 'Yes' ? <span className="pill ok">Yes</span> : c.above2k === 'No' ? <span className="pill draft">No</span> : <span className="muted">N/A</span>}</td>
-                  <td style={{ textAlign: 'right' }}>{c.rating ? <span className="rating-stars">★ {Number(c.rating).toFixed(2)}</span> : '—'}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600, color: c.revenue ? '#10b981' : '#9ca3af' }}>{c.revenue ? usd(c.revenue) : '—'}</td>
-                  <td style={{ textAlign: 'right' }}>{c.minutes_taught ? num(Math.round(c.minutes_taught)) : <span className="muted">—</span>}</td>
-                  <td className="muted" style={{ fontSize: 13 }} title={capNames(c.caption_locales).join(', ')}>{capNames(c.caption_locales).slice(0, 3).join(', ') || '—'}{capNames(c.caption_locales).length > 3 ? ` +${capNames(c.caption_locales).length - 3}` : ''}</td>
-                  <td style={{ textAlign: 'right' }}>{Array.isArray(c.coupons) ? (c.coupons.length || '0') : <span className="muted">—</span>}</td>
-                  <td style={{ textAlign: 'center' }}>{c.is_udemy_business ? <span title="Udemy Business" style={{ color: '#ea7112' }}>✓</span> : <span className="muted">—</span>}</td>
-                  <td style={{ textAlign: 'center' }}>{c.hasPaul ? <span title="Active" style={{ color: '#10b981' }}>✓</span> : <span title="Not on course" style={{ color: '#f59e0b' }}>✗</span>}</td>
-                  <td style={{ textAlign: 'center' }}>{c.isFinance ? (c.hasGlobecon ? <span style={{ color: '#10b981' }}>✓</span> : <span title="Missing" style={{ color: '#ef4444' }}>✗</span>) : <span className="muted">—</span>}</td>
-                  <td className="muted" style={{ fontSize: 13, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={(c.sme || []).join(', ')}>{(c.sme || []).join(', ') || '—'}</td>
+                  <td onClick={(e) => e.stopPropagation()}><BookmarkButton active={isBookmarked('udemy', c.id)} onClick={() => toggleBookmark('udemy', c.id, c.title)} /></td>
+                  {shownRenderers.map(([key, render]) => render(c, key))}
                 </tr>
               ))}
             </tbody>
@@ -428,39 +572,67 @@ function Courses({ udemy, totalRevenue, onOpen, onRefresh }) {
 }
 
 // ---------------- Coursera (native, full metrics parity) ----------------
-function CourseraView({ rows }) {
+const STR_SORT_KEYS = new Set(['name', 'title', 'domain', 'category', 'status', 'code', 'instructorNames']);
+const STATUS_STYLE = {
+  launched: { bg: '#dcfce7', fg: '#10b981', text: 'Launched' },
+  draft: { bg: '#fef3c7', fg: '#f59e0b', text: 'Draft' },
+  preenroll: { bg: '#eef2ff', fg: '#4f46e5', text: 'Preenroll' },
+};
+function StatusBadge({ status }) {
+  if (!status) return <span className="muted">—</span>;
+  const s = STATUS_STYLE[status] || { bg: '#f3f4f6', fg: '#6b7280', text: status };
+  return <span className="pill" style={{ background: s.bg, color: s.fg }}>{s.text}</span>;
+}
+
+function CourseraView({ rows, label = 'Coursera', showInstructorCheck = true, reviewsBySlug = {}, platform = 'coursera', isBookmarked, toggleBookmark }) {
   const [sort, setSort] = useState({ key: 'enrollments', dir: -1 });
   const pct = (r) => (r == null ? '—' : (r <= 1 ? Math.round(r * 100) : Math.round(r)) + '%');
-  const data = useMemo(() => [...rows].sort((a, b) => sort.dir * ((Number(a[sort.key]) || 0) - (Number(b[sort.key]) || 0))), [rows, sort]);
-  if (!rows.length) return (<><Header crumb="COURSES · COURSERA" title="Coursera" sub="Partner course metrics" /><div className="table-card"><div style={{ padding: 24 }} className="muted">No Coursera metrics cached. Reconnect Coursera in Settings, then run the metrics scrape.</div></div></>);
+  const data = useMemo(() => [...rows].sort((a, b) => {
+    if (STR_SORT_KEYS.has(sort.key)) return sort.dir * String(a[sort.key] || '').localeCompare(String(b[sort.key] || ''));
+    return sort.dir * ((Number(a[sort.key]) || 0) - (Number(b[sort.key]) || 0));
+  }), [rows, sort]);
+  if (!rows.length) return (<><Header crumb={`COURSES · ${label.toUpperCase()}`} title={label} sub="Partner course metrics" /><div className="table-card"><div style={{ padding: 24 }} className="muted">No {label} metrics cached. Reconnect Coursera in Settings, then run the metrics scrape.</div></div></>);
   const totE = rows.reduce((s, c) => s + (c.enrollments || 0), 0);
   const totC = rows.reduce((s, c) => s + (c.completions || 0), 0);
   const rated = rows.filter((c) => c.rating);
   const avgR = rated.length ? rated.reduce((s, c) => s + Number(c.rating), 0) / rated.length : 0;
-  const th = (key, label) => <th key={key} style={{ textAlign: 'right' }} onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : -1 }))}>{label}{sort.key === key ? (sort.dir < 0 ? ' ↓' : ' ↑') : ''}</th>;
+  const withRevenue = rows.filter((c) => c.revenue != null);
+  const totRev = withRevenue.reduce((s, c) => s + (c.revenue || 0), 0);
+  const th = (key, label, align = 'right') => <th key={key} style={{ textAlign: align }} onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : -1 }))}>{label}{sort.key === key ? (sort.dir < 0 ? ' ↓' : ' ↑') : ''}</th>;
   return (
     <>
-      <Header crumb="COURSES · COURSERA" title="Coursera" sub="Partner course metrics (org-level revenue, so no per-course revenue)" />
+      <Header crumb={`COURSES · ${label.toUpperCase()}`} title={label} sub={withRevenue.length ? `Partner course metrics — revenue from a manually imported report (${withRevenue.length}/${rows.length} courses)` : 'Partner course metrics'} actions={<button className="btn btn-secondary" onClick={() => exportCourseraCsv(data)}>⬇ Export CSV</button>} />
       <div className="kpi-grid">
         <Kpi icon="📚" bg="#cce5ff" fg="#0066cc" label="Courses" value={num(rows.length)} />
         <Kpi icon="👥" bg="#cce5ff" fg="#0066cc" label="Enrollments" value={num(totE)} />
         <Kpi icon="🎓" bg="#dcfce7" fg="#10b981" label="Completions" value={num(totC)} trend={`${Math.round((totC / (totE || 1)) * 100)}% overall`} />
         <Kpi icon="⭐" bg="#fef3c7" fg="#f59e0b" label="Avg Rating" value={avgR ? avgR.toFixed(2) : '—'} />
+        {withRevenue.length > 0 && <Kpi icon="💵" bg="#dcfce7" fg="#10b981" label="Revenue" value={usd(totRev)} trend={`${withRevenue.length}/${rows.length} courses — imported report`} />}
       </div>
       <div className="table-card"><div className="table-scroll"><table>
-        <thead><tr><th className="no-sort">Course</th><th className="no-sort">Domain</th>{th('enrollments', 'Enrollments')}{th('completions', 'Completions')}{th('completionRate', 'Compl. Rate')}{th('rating', 'Rating')}<th className="no-sort">Instructor</th></tr></thead>
+        <thead><tr><th className="no-sort"></th>{th('name', 'Course', 'left')}{th('domain', 'Domain', 'left')}{th('status', 'Status', 'center')}{th('enrollments', 'Enrollments')}{th('completions', 'Completions')}{th('completionRate', 'Compl. Rate')}{th('rating', 'Rating')}<th className="no-sort">Reviews</th>{th('revenue', 'Revenue')}{showInstructorCheck && <th className="no-sort">Instructor</th>}{showInstructorCheck && th('instructorNames', 'Instructor Names', 'left')}</tr></thead>
         <tbody>
-          {data.map((c, i) => (
+          {data.map((c, i) => {
+            const reviews = (c.slug && reviewsBySlug[c.slug]) || [];
+            const reviewTitle = reviews.slice(0, 3).map((r) => `${r.rating ? `★${r.rating} ` : ''}${r.reviewText || ''}`).join('\n\n');
+            const bmKey = c.slug || c.name;
+            return (
             <tr key={i}>
+              <td><BookmarkButton active={isBookmarked(platform, bmKey)} onClick={() => toggleBookmark(platform, bmKey, c.name)} /></td>
               <td style={{ fontWeight: 500 }}>{c.name}</td>
               <td className="muted" style={{ fontSize: 13 }}>{c.domain || '—'}</td>
+              <td style={{ textAlign: 'center' }}><StatusBadge status={c.status} /></td>
               <td style={{ textAlign: 'right' }}>{num(c.enrollments)}</td>
               <td style={{ textAlign: 'right' }}>{num(c.completions)}</td>
               <td style={{ textAlign: 'right' }}>{pct(c.completionRate)}</td>
               <td style={{ textAlign: 'right' }}>{c.rating ? <span className="rating-stars">★ {Number(c.rating).toFixed(2)}</span> : '—'}</td>
-              <td style={{ textAlign: 'center' }}>{c.hasStarweaverInstructor ? <span title="instructors@starweaver.com is an Instructor" style={{ color: '#10b981' }}>✓</span> : <span title="instructors@starweaver.com not found as Instructor" style={{ color: '#ef4444' }}>✗</span>}</td>
+              <td style={{ textAlign: 'center' }} title={reviewTitle || undefined}>{reviews.length ? <span className="pill" style={{ background: '#eef2ff', color: '#4f46e5', cursor: 'help' }}>{reviews.length}</span> : <span className="muted">0</span>}</td>
+              <td style={{ textAlign: 'right', fontWeight: 600, color: c.revenue ? '#10b981' : '#9ca3af' }}>{c.revenue != null ? usd(c.revenue) : '—'}</td>
+              {showInstructorCheck && <td style={{ textAlign: 'center' }}>{c.hasStarweaverInstructor ? <span title="instructors@starweaver.com is an Instructor" style={{ color: '#10b981' }}>✓</span> : <span title="instructors@starweaver.com not found as Instructor" style={{ color: '#ef4444' }}>✗</span>}</td>}
+              {showInstructorCheck && <td className="muted" style={{ fontSize: 13 }}>{c.instructorNames?.length ? c.instructorNames.join(', ') : '—'}</td>}
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table></div></div>
     </>
@@ -468,7 +640,7 @@ function CourseraView({ rows }) {
 }
 
 // ---------------- FutureLearn (native: course list + status + enrollment) ----------------
-function FutureLearnView({ rows }) {
+function FutureLearnView({ rows, isBookmarked, toggleBookmark }) {
   const [sort, setSort] = useState({ key: 'enrollment', dir: -1 });
   const [q, setQ] = useState('');
   const filtered = useMemo(() => {
@@ -483,10 +655,10 @@ function FutureLearnView({ rows }) {
   if (!rows.length) return (<><Header crumb="COURSES · FUTURELEARN" title="FutureLearn" sub="Course list + status" /><div className="table-card"><div style={{ padding: 24 }} className="muted">No FutureLearn courses cached. Connect FutureLearn in Settings, then run <code>npm run futurelearn:courses</code>.</div></div></>);
   const totalEnroll = rows.reduce((s, c) => s + (c.enrollment || 0), 0);
   const live = rows.filter((c) => c.status === 'In progress').length;
-  const th = (key, label) => <th key={key} style={{ textAlign: 'right' }} onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : -1 }))}>{label}{sort.key === key ? (sort.dir < 0 ? ' ↓' : ' ↑') : ''}</th>;
+  const th = (key, label, align = 'right') => <th key={key} style={{ textAlign: align }} onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : -1 }))}>{label}{sort.key === key ? (sort.dir < 0 ? ' ↓' : ' ↑') : ''}</th>;
   return (
     <>
-      <Header crumb="COURSES · FUTURELEARN" title="FutureLearn" sub="Course list, run status, and public enrollment counts (no partner API, no ratings exposed)" />
+      <Header crumb="COURSES · FUTURELEARN" title="FutureLearn" sub="Course list, run status, and public enrollment counts (no partner API, no ratings exposed)" actions={<button className="btn btn-secondary" onClick={() => exportFutureLearnCsv(data)}>⬇ Export CSV</button>} />
       <div className="kpi-grid">
         <Kpi icon="📚" bg="#cce5ff" fg="#0066cc" label="Courses" value={num(rows.length)} />
         <Kpi icon="🟢" bg="#dcfce7" fg="#10b981" label="Live runs" value={num(live)} />
@@ -498,10 +670,11 @@ function FutureLearnView({ rows }) {
           <span className="muted">{data.length} shown</span>
         </div>
         <div className="table-scroll"><table>
-          <thead><tr><th className="no-sort">Course</th><th className="no-sort">Code</th><th className="no-sort">Category</th>{th('status', 'Status')}<th className="no-sort">Start date</th>{th('wishlistCount', 'Wishlist')}{th('enrollment', 'Enrollment')}</tr></thead>
+          <thead><tr><th className="no-sort"></th>{th('title', 'Course', 'left')}{th('code', 'Code', 'left')}{th('category', 'Category', 'left')}{th('status', 'Status')}<th className="no-sort">Start date</th>{th('wishlistCount', 'Wishlist')}{th('enrollment', 'Enrollment')}</tr></thead>
           <tbody>
             {data.map((c) => (
               <tr key={c.slug}>
+                <td><BookmarkButton active={isBookmarked('futurelearn', c.slug)} onClick={() => toggleBookmark('futurelearn', c.slug, c.title)} /></td>
                 <td style={{ fontWeight: 500, minWidth: 200 }}>{c.title}</td>
                 <td className="muted" style={{ fontSize: 13 }}>{c.code || '—'}</td>
                 <td className="muted" style={{ fontSize: 13 }}>{c.category || '—'}</td>
@@ -518,34 +691,61 @@ function FutureLearnView({ rows }) {
   );
 }
 
-// ---------------- Go1 (native: monthly course-level consumption) ----------------
-function Go1View({ rows, month }) {
+// ---------------- Go1 (native: lifetime totals + monthly snapshot) ----------------
+// Go1 never returns more than one month per request (no lifetime endpoint) — the
+// "Lifetime" scope here is built by scrapeGo1History.js scraping every month back
+// to when Go1 data starts and summing per course. "This Month" stays available as
+// a secondary reference since it's what changed most recently.
+function Go1View({ rows, month, lifetime, isBookmarked, toggleBookmark }) {
+  const [scope, setScope] = useState('lifetime');
   const [sort, setSort] = useState({ key: 'enrolments', dir: -1 });
-  const data = useMemo(() => [...rows].sort((a, b) => sort.dir * ((Number(a[sort.key]) || 0) - (Number(b[sort.key]) || 0))), [rows, sort]);
-  if (!rows.length) return (
+  const activeRows = scope === 'lifetime' ? lifetime.courses : rows;
+  const data = useMemo(() => [...activeRows].sort((a, b) => {
+    if (STR_SORT_KEYS.has(sort.key)) return sort.dir * String(a[sort.key] || '').localeCompare(String(b[sort.key] || ''));
+    return sort.dir * ((Number(a[sort.key]) || 0) - (Number(b[sort.key]) || 0));
+  }), [activeRows, sort]);
+  if (!rows.length && !lifetime.courses.length) return (
     <>
       <Header crumb="COURSES · GO1" title="Go1" sub="Content Studio — course-level consumption" />
       <div className="table-card"><div style={{ padding: 24 }} className="muted">
-        No Go1 course data cached yet. Connect Go1 in Settings — course-level scraping is still being finalized (Go1's Content Studio dashboard has proven flaky to automate); Overview KPIs (Total Users, Minutes of Learning) are available sooner than the per-course breakdown.
+        No Go1 course data cached yet. Connect Go1 in Settings, then run <code>npm run go1:history</code> for lifetime totals (or <code>npm run go1:courses</code> for just this month).
       </div></div>
     </>
   );
-  const totE = rows.reduce((s, c) => s + (c.enrolments || 0), 0);
-  const totC = rows.reduce((s, c) => s + (c.completions || 0), 0);
-  const th = (key, label) => <th key={key} style={{ textAlign: 'right' }} onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : -1 }))}>{label}{sort.key === key ? (sort.dir < 0 ? ' ↓' : ' ↑') : ''}</th>;
+  const totE = activeRows.reduce((s, c) => s + (c.enrolments || 0), 0);
+  const totC = activeRows.reduce((s, c) => s + (c.completions || 0), 0);
+  const isLifetime = scope === 'lifetime';
+  const scopeBtn = (key, label) => (
+    <button
+      className="btn btn-secondary"
+      style={scope === key ? { background: '#002fa7', color: '#fff', borderColor: '#002fa7' } : undefined}
+      onClick={() => setScope(key)}
+    >{label}</button>
+  );
+  const th = (key, label, align = 'right') => <th key={key} style={{ textAlign: align }} onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : -1 }))}>{label}{sort.key === key ? (sort.dir < 0 ? ' ↓' : ' ↑') : ''}</th>;
   return (
     <>
-      <Header crumb="COURSES · GO1" title="Go1" sub={`Content Studio — course-level consumption${month ? ` (${month})` : ''}. Monthly snapshot, not a lifetime total.`} />
+      <Header crumb="COURSES · GO1" title="Go1"
+        sub={isLifetime
+          ? `Content Studio — lifetime totals${lifetime.firstMonth ? ` (${lifetime.firstMonth} to ${lifetime.lastMonth}, ${lifetime.monthCount} months)` : ''}`
+          : `Content Studio — course-level consumption${month ? ` (${month} only)` : ''}`}
+        actions={<div style={{ display: 'flex', gap: 8 }}>
+          {scopeBtn('lifetime', 'Lifetime')}
+          {scopeBtn('month', month || 'This Month')}
+          <button className="btn btn-secondary" onClick={() => exportGo1Csv(data)}>⬇ Export CSV</button>
+        </div>}
+      />
       <div className="kpi-grid">
-        <Kpi icon="📚" bg="#cce5ff" fg="#0066cc" label="Courses" value={num(rows.length)} />
-        <Kpi icon="👥" bg="#cce5ff" fg="#0066cc" label="Enrolments (month)" value={num(totE)} />
-        <Kpi icon="🎓" bg="#dcfce7" fg="#10b981" label="Completions (month)" value={num(totC)} />
+        <Kpi icon="📚" bg="#cce5ff" fg="#0066cc" label="Courses" value={num(activeRows.length)} />
+        <Kpi icon="👥" bg="#cce5ff" fg="#0066cc" label={isLifetime ? 'Enrolments (lifetime)' : 'Enrolments (month)'} value={num(totE)} />
+        <Kpi icon="🎓" bg="#dcfce7" fg="#10b981" label={isLifetime ? 'Completions (lifetime)' : 'Completions (month)'} value={num(totC)} />
       </div>
       <div className="table-card"><div className="table-scroll"><table>
-        <thead><tr><th className="no-sort">Course</th>{th('enrolments', 'Enrolments')}{th('completions', 'Completions')}{th('totalMinutes', 'Total minutes')}{th('avgSessionMinutes', 'Avg session')}</tr></thead>
+        <thead><tr><th className="no-sort"></th>{th('name', 'Course', 'left')}{th('enrolments', 'Enrolments')}{th('completions', 'Completions')}{th('totalMinutes', 'Total minutes')}{th('avgSessionMinutes', 'Avg session')}</tr></thead>
         <tbody>
           {data.map((c, i) => (
             <tr key={i}>
+              <td><BookmarkButton active={isBookmarked('go1', c.name)} onClick={() => toggleBookmark('go1', c.name, c.name)} /></td>
               <td style={{ fontWeight: 500 }}>{c.name}</td>
               <td style={{ textAlign: 'right' }}>{num(c.enrolments)}</td>
               <td style={{ textAlign: 'right' }}>{num(c.completions)}</td>
@@ -559,8 +759,116 @@ function Go1View({ rows, month }) {
   );
 }
 
+// ---------------- Watchlist (cross-platform bookmarked courses) ----------------
+function Watchlist({ bookmarks, udemy, coursera, courseraCin, futurelearn, go1, isBookmarked, toggleBookmark, onOpen }) {
+  const byPlatform = useMemo(() => {
+    const g = { udemy: [], coursera: [], coursera_cin: [], futurelearn: [], go1: [] };
+    bookmarks.forEach((b) => { if (g[b.platform]) g[b.platform].push(b); });
+    return g;
+  }, [bookmarks]);
+
+  const udemyRows = byPlatform.udemy.map((b) => udemy.find((c) => String(c.id) === String(b.courseKey))).filter(Boolean);
+  const courseraRows = byPlatform.coursera.map((b) => coursera.find((c) => (c.slug || c.name) === b.courseKey)).filter(Boolean);
+  const courseraCinRows = byPlatform.coursera_cin.map((b) => courseraCin.find((c) => (c.slug || c.name) === b.courseKey)).filter(Boolean);
+  const futurelearnRows = byPlatform.futurelearn.map((b) => futurelearn.find((c) => c.slug === b.courseKey)).filter(Boolean);
+  const go1Rows = byPlatform.go1.map((b) => go1.find((c) => c.name === b.courseKey)).filter(Boolean);
+  const total = udemyRows.length + courseraRows.length + courseraCinRows.length + futurelearnRows.length + go1Rows.length;
+
+  if (!bookmarks.length) {
+    return (
+      <>
+        <Header crumb="WATCHLIST" title="Watchlist" sub="Bookmark courses from any platform to track them here" />
+        <div className="table-card"><div className="watchlist-empty">
+          ☆ No bookmarked courses yet.<br />Click the star next to any course in a Courses table to add it here.
+        </div></div>
+      </>
+    );
+  }
+
+  const section = (label, rows, thead, renderRow) => rows.length > 0 && (
+    <div className="table-card" style={{ marginBottom: 20 }}>
+      <div className="table-header"><strong>{label}</strong><span className="muted">{rows.length} shown</span></div>
+      <div className="table-scroll"><table>
+        <thead><tr>{thead}</tr></thead>
+        <tbody>{rows.map(renderRow)}</tbody>
+      </table></div>
+    </div>
+  );
+
+  return (
+    <>
+      <Header crumb="WATCHLIST" title="Watchlist" sub={`${total} bookmarked course${total === 1 ? '' : 's'} across all platforms`} />
+      {section('Udemy', udemyRows,
+        <><th className="no-sort"></th><th style={{ textAlign: 'left' }}>Course</th><th>Rating</th><th>Enrolled</th><th>Reviews</th><th>Revenue</th></>,
+        (c) => (
+          <tr key={c.id} className="click" onClick={() => onOpen(c)}>
+            <td onClick={(e) => e.stopPropagation()}><BookmarkButton active={isBookmarked('udemy', c.id)} onClick={() => toggleBookmark('udemy', c.id, c.title)} /></td>
+            <td style={{ fontWeight: 500 }}>{c.title}</td>
+            <td style={{ textAlign: 'right' }}>{c.rating ? Number(c.rating).toFixed(2) : '—'}</td>
+            <td style={{ textAlign: 'right' }}>{num(c.num_subscribers)}</td>
+            <td style={{ textAlign: 'right' }}>{num(c.num_reviews)}</td>
+            <td style={{ textAlign: 'right' }}>{c.revenue != null ? usd(c.revenue) : '—'}</td>
+          </tr>
+        ))}
+      {section('Coursera', courseraRows,
+        <><th className="no-sort"></th><th style={{ textAlign: 'left' }}>Course</th><th style={{ textAlign: 'left' }}>Status</th><th>Rating</th><th>Enrollments</th><th>Revenue</th></>,
+        (c, i) => {
+          const key = c.slug || c.name;
+          return (
+            <tr key={i}>
+              <td><BookmarkButton active={isBookmarked('coursera', key)} onClick={() => toggleBookmark('coursera', key, c.name)} /></td>
+              <td style={{ fontWeight: 500 }}>{c.name}</td>
+              <td><StatusBadge status={c.status} /></td>
+              <td style={{ textAlign: 'right' }}>{c.rating ? Number(c.rating).toFixed(2) : '—'}</td>
+              <td style={{ textAlign: 'right' }}>{num(c.enrollments)}</td>
+              <td style={{ textAlign: 'right' }}>{c.revenue != null ? usd(c.revenue) : '—'}</td>
+            </tr>
+          );
+        })}
+      {section('Coursera CIN', courseraCinRows,
+        <><th className="no-sort"></th><th style={{ textAlign: 'left' }}>Course</th><th style={{ textAlign: 'left' }}>Status</th><th>Rating</th><th>Enrollments</th><th>Revenue</th></>,
+        (c, i) => {
+          const key = c.slug || c.name;
+          return (
+            <tr key={i}>
+              <td><BookmarkButton active={isBookmarked('coursera_cin', key)} onClick={() => toggleBookmark('coursera_cin', key, c.name)} /></td>
+              <td style={{ fontWeight: 500 }}>{c.name}</td>
+              <td><StatusBadge status={c.status} /></td>
+              <td style={{ textAlign: 'right' }}>{c.rating ? Number(c.rating).toFixed(2) : '—'}</td>
+              <td style={{ textAlign: 'right' }}>{num(c.enrollments)}</td>
+              <td style={{ textAlign: 'right' }}>{c.revenue != null ? usd(c.revenue) : '—'}</td>
+            </tr>
+          );
+        })}
+      {section('FutureLearn', futurelearnRows,
+        <><th className="no-sort"></th><th style={{ textAlign: 'left' }}>Course</th><th style={{ textAlign: 'left' }}>Status</th><th>Wishlist</th><th>Enrollment</th></>,
+        (c) => (
+          <tr key={c.slug}>
+            <td><BookmarkButton active={isBookmarked('futurelearn', c.slug)} onClick={() => toggleBookmark('futurelearn', c.slug, c.title)} /></td>
+            <td style={{ fontWeight: 500 }}>{c.title}</td>
+            <td>{c.status || '—'}</td>
+            <td style={{ textAlign: 'right' }}>{num(c.wishlistCount)}</td>
+            <td style={{ textAlign: 'right' }}>{c.enrollment != null ? num(c.enrollment) : '—'}</td>
+          </tr>
+        ))}
+      {section('Go1', go1Rows,
+        <><th className="no-sort"></th><th style={{ textAlign: 'left' }}>Course</th><th>Enrolments</th><th>Completions</th><th>Total minutes</th></>,
+        (c, i) => (
+          <tr key={i}>
+            <td><BookmarkButton active={isBookmarked('go1', c.name)} onClick={() => toggleBookmark('go1', c.name, c.name)} /></td>
+            <td style={{ fontWeight: 500 }}>{c.name}</td>
+            <td style={{ textAlign: 'right' }}>{num(c.enrolments)}</td>
+            <td style={{ textAlign: 'right' }}>{num(c.completions)}</td>
+            <td style={{ textAlign: 'right' }}>{num(c.totalMinutes)}</td>
+          </tr>
+        ))}
+    </>
+  );
+}
+
 // ---------------- Earnings (native, parity: Days Live + $/day + best) ----------------
-function Earnings({ udemy, totalRevenue, monthly }) {
+function Earnings({ udemy, totalRevenue, monthly, platform, coursera = [] }) {
+  const isAll = platform === 'all';
   const earning = udemy.filter((c) => c.revenue > 0);
   const revSeries = monthlySeries(monthly);
   const [sort, setSort] = useState({ key: 'revenue', dir: -1 });
@@ -569,11 +877,17 @@ function Earnings({ udemy, totalRevenue, monthly }) {
   const top = rows[0];
   const perDayChart = [...withDerived].sort((a, b) => b._perDay - a._perDay).slice(0, 8).map((c) => ({ label: c.title, value: c._perDay, color: '#0066cc' }));
   const th = (key, label) => <th key={key} onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : -1 }))}>{label}{sort.key === key ? (sort.dir < 0 ? ' ↓' : ' ↑') : ''}</th>;
+  // Same combination as the Overview KPI: Udemy live revenue + Coursera's manually
+  // imported revenue. Coursera CIN stays excluded — it's not part of this portfolio.
+  const courseraRevenueTotal = coursera.reduce((s, c) => s + (c.revenue || 0), 0);
+  const courseraRevenueCount = coursera.filter((c) => c.revenue != null).length;
+  const revenueValue = isAll ? usd((totalRevenue || 0) + courseraRevenueTotal) : usd(totalRevenue);
+  const revenueTrend = isAll ? `Udemy + Coursera (${courseraRevenueCount}/${coursera.length} courses)` : 'all-time Udemy';
   return (
     <>
-      <Header crumb="EARNINGS" title="Earnings" sub="Published-course revenue, days live, and $/day" actions={<button className="btn btn-secondary" onClick={() => exportCsv(udemy)}>⬇ Export CSV</button>} />
+      <Header crumb="EARNINGS" title="Earnings" sub={isAll ? 'Combined revenue, plus a Udemy per-course breakdown below' : 'Published-course revenue, days live, and $/day'} actions={<button className="btn btn-secondary" onClick={() => exportCsv(udemy)}>⬇ Export CSV</button>} />
       <div className="kpi-grid">
-        <Kpi label="Lifetime Revenue" value={usd(totalRevenue)} fg="#10b981" trend="all-time Udemy" />
+        <Kpi label="Lifetime Revenue" value={revenueValue} fg="#10b981" trend={revenueTrend} />
         <Kpi label="Top Course" value={(top?.title || '—').slice(0, 22)} big={false} trend={usd(top?.revenue)} />
         <Kpi label="Courses Earning" value={num(earning.length)} trend={`of ${udemy.length} total`} />
         <Kpi label="Best $/Day" value={usd(top ? [...withDerived].sort((a, b) => b._perDay - a._perDay)[0]?._perDay : null)} trend="top earner per day" />
@@ -585,7 +899,7 @@ function Earnings({ udemy, totalRevenue, monthly }) {
         </div>
       </div>
       <div className="table-card">
-        <div className="table-header"><b>Earnings by Course (published)</b><span className="muted">{rows.length} earning</span></div>
+        <div className="table-header"><b>Earnings by Course (published{isAll ? ' — Udemy only' : ''})</b><span className="muted">{rows.length} earning</span></div>
         <div className="table-scroll"><table>
           <thead><tr><th className="no-sort">Course</th><th className="no-sort">Published</th>{th('_days', 'Days Live')}{th('revenue', 'Total Earning')}{th('_perDay', '$/Day')}</tr></thead>
           <tbody>
@@ -596,6 +910,53 @@ function Earnings({ udemy, totalRevenue, monthly }) {
                 <td style={{ textAlign: 'right' }}>{c._days ? num(c._days) : '—'}</td>
                 <td style={{ textAlign: 'right', fontWeight: 600, color: '#10b981' }}>{usd(c.revenue)}</td>
                 <td style={{ textAlign: 'right' }}>{c._perDay ? '$' + c._perDay.toFixed(2) : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table></div>
+      </div>
+    </>
+  );
+}
+
+// ---------------- Coursera / Coursera CIN Earnings (manually imported revenue) ----------------
+// Same revenue numbers shown on the Overview KPI and the Courses table's Revenue
+// column for this platform — kept in one place (readCourseraRevenueImport, merged
+// in by index.js) so all three views can never disagree.
+function CourseraEarnings({ rows, label = 'Coursera' }) {
+  // "withRevenue" (has an imported row, incl. real $0s) is the same coverage
+  // count shown on the Overview KPI and the Courses table's sub-header — keep
+  // this one in sync with those. "earning" (revenue > 0) is a narrower, Earnings-
+  // specific view of which courses actually made money, same distinction Udemy's
+  // Earnings tab draws.
+  const withRevenue = rows.filter((c) => c.revenue != null);
+  const earning = rows.filter((c) => c.revenue > 0);
+  const [sort, setSort] = useState({ key: 'revenue', dir: -1 });
+  const sorted = useMemo(() => [...earning].sort((a, b) => sort.dir * ((Number(a[sort.key]) || 0) - (Number(b[sort.key]) || 0))), [earning, sort]);
+  const total = rows.reduce((s, c) => s + (c.revenue || 0), 0);
+  const totalCompletions = rows.reduce((s, c) => s + (c.revenueCompletions || 0), 0);
+  const top = sorted[0];
+  const th = (key, colLabel) => <th key={key} style={{ textAlign: 'right' }} onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : -1 }))}>{colLabel}{sort.key === key ? (sort.dir < 0 ? ' ↓' : ' ↑') : ''}</th>;
+  return (
+    <>
+      <Header crumb="EARNINGS" title="Earnings" sub={`${label} revenue — from a manually imported partner report (${withRevenue.length}/${rows.length} courses), not a live API`} actions={<button className="btn btn-secondary" onClick={() => exportCourseraCsv(rows)}>⬇ Export CSV</button>} />
+      <div className="kpi-grid">
+        <Kpi label="Lifetime Revenue" value={usd(total)} fg="#10b981" trend={`${withRevenue.length}/${rows.length} courses — imported report`} />
+        <Kpi label="Top Course" value={(top?.name || '—').slice(0, 22)} big={false} trend={usd(top?.revenue)} />
+        <Kpi label="Courses Earning" value={num(earning.length)} trend={`of ${rows.length} total`} />
+        <Kpi label="Completions (imported)" value={num(totalCompletions)} trend="from the same report" />
+      </div>
+      <div className="table-card">
+        <div className="table-header"><b>Earnings by Course</b><span className="muted">{sorted.length} earning</span></div>
+        <div className="table-scroll"><table>
+          <thead><tr><th className="no-sort" style={{ textAlign: 'left' }}>Course</th><th className="no-sort" style={{ textAlign: 'left' }}>Status</th>{th('revenue', 'Revenue')}{th('revenueCompletions', 'Completions')}</tr></thead>
+          <tbody>
+            {sorted.map((c, i) => (
+              <tr key={i}>
+                <td style={{ fontWeight: 500 }}>{c.name}</td>
+                <td><StatusBadge status={c.status} /></td>
+                <td style={{ textAlign: 'right', fontWeight: 600, color: '#10b981' }}>{usd(c.revenue)}</td>
+                <td style={{ textAlign: 'right' }}>{c.revenueCompletions != null ? num(c.revenueCompletions) : '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -747,10 +1108,14 @@ function Coupons({ udemy }) {
   const active = useMemo(() => rows.filter((r) => r.active), [rows]);
   const totalUsed = active.reduce((s, r) => s + (r.used || 0), 0);
   const totalRemaining = active.reduce((s, r) => s + Math.max(0, (r.max_uses || 0) - (r.used || 0)), 0);
-  // Udemy's documented rule this app works within: ~1 free coupon per course per
-  // month — so "room to create more" = published courses with no active free coupon.
-  const coursesWithActiveFree = new Set(udemy.filter((c) => (c.coupons || []).some((cp) => cp.active && cp.is_free)).map((c) => c.id));
-  const headroom = udemy.length - coursesWithActiveFree.size;
+  // Real quota from Udemy's /coupons-v2/meta/ (remaining_coupon_count, scraped
+  // separately from the coupons themselves) — how many NEW coupons Udemy will
+  // still let you create this month on each course. Not checked yet == null,
+  // kept separate from 0 (quota used up) rather than silently treated as 0.
+  const withQuota = udemy.filter((c) => c.remaining_coupon_count != null);
+  const headroom = withQuota.filter((c) => c.remaining_coupon_count > 0).length;
+  const totalCouponsLeft = withQuota.reduce((s, c) => s + (c.remaining_coupon_count || 0), 0);
+  const notChecked = udemy.length - withQuota.length;
   const activeCourseCount = new Set(active.map((r) => r.courseId)).size;
   // Flag courses stacking more than one active coupon at once (worth a second look —
   // could mean two promos are competing for the same enrollment).
@@ -767,6 +1132,13 @@ function Coupons({ udemy }) {
   }, [active, q]);
   const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—');
 
+  const [qQuota, setQQuota] = useState('');
+  const quotaRows = useMemo(() => {
+    const s = qQuota.trim().toLowerCase();
+    const list = s ? udemy.filter((c) => c.title.toLowerCase().includes(s)) : udemy;
+    return [...list].sort((a, b) => (b.remaining_coupon_count ?? -1) - (a.remaining_coupon_count ?? -1));
+  }, [udemy, qQuota]);
+
   return (
     <>
       <Header crumb="COUPONS" title="Coupons" sub="Active promotional codes across your Udemy courses" />
@@ -774,7 +1146,7 @@ function Coupons({ udemy }) {
         <Kpi icon="🎟️" bg="#eef2ff" fg="#4f46e5" label="Active Coupons" value={num(active.length)} trend={`across ${activeCourseCount} course${activeCourseCount === 1 ? '' : 's'}`} />
         <Kpi icon="👥" bg="#cce5ff" fg="#0066cc" label="Learners Used" value={num(totalUsed)} trend="redemptions so far" />
         <Kpi icon="🎯" bg="#dcfce7" fg="#10b981" label="Enrollment Slots Left" value={num(totalRemaining)} trend="before active coupons cap out" />
-        <Kpi icon="➕" bg="#fef3c7" fg="#f59e0b" label="Coupon Creation Headroom" value={num(headroom)} trend="courses without an active free coupon (Udemy: ~1/course/month)" />
+        <Kpi icon="➕" bg="#fef3c7" fg="#f59e0b" label="Coupon Creation Headroom" value={num(headroom)} trend={`courses with quota left · ${num(totalCouponsLeft)} total slots${notChecked ? ` · ${notChecked} not checked yet` : ''}`} />
       </div>
       {stackedCourses.length > 0 && (
         <div className="banner warn" style={{ marginBottom: 22 }}>
@@ -811,6 +1183,34 @@ function Coupons({ udemy }) {
                   <td>{remaining}</td>
                   <td className="muted">{fmtDate(r.end)}</td>
                   <td>{link ? <a href={link} target="_blank" rel="noreferrer">Open ↗</a> : <span className="muted">—</span>}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table></div>
+      </div>
+
+      <Header crumb="COUPONS" title="Coupon Creation Quota" sub="How many new coupons Udemy will still let you create this month, per course" />
+      <div className="table-card">
+        <div className="table-header">
+          <input className="table-search" placeholder="Search course…" value={qQuota} onChange={(e) => setQQuota(e.target.value)} />
+          <span className="muted">{quotaRows.length} shown</span>
+        </div>
+        <div className="table-scroll"><table>
+          <thead><tr><th className="no-sort">Course</th><th className="no-sort">Active Coupons</th><th className="no-sort">Coupons Left This Month</th></tr></thead>
+          <tbody>
+            {quotaRows.map((c) => {
+              const activeCount = (c.coupons || []).filter((cp) => cp.active).length;
+              const left = c.remaining_coupon_count;
+              return (
+                <tr key={c.id}>
+                  <td style={{ fontWeight: 500, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</td>
+                  <td>{activeCount || <span className="muted">0</span>}</td>
+                  <td>
+                    {left == null ? <span className="muted" title="Quota not scraped yet for this course">not checked</span>
+                      : left > 0 ? <span className="pill ok">{left} left</span>
+                      : <span className="pill draft">0 left</span>}
+                  </td>
                 </tr>
               );
             })}
@@ -870,4 +1270,16 @@ function Header({ title, sub, actions, crumb }) {
 }
 function Kpi({ icon, bg, fg, label, value, trend, big = true }) {
   return (<div className="kpi-card">{icon && <div className="kpi-icon" style={{ background: bg, color: fg }}>{icon}</div>}<div className="kpi-label">{label}</div><div className="kpi-value" style={{ color: fg && !icon ? fg : undefined, fontSize: big ? undefined : 18 }}>{value}</div>{trend && <div className="kpi-trend">{trend}</div>}</div>);
+}
+function BookmarkButton({ active, onClick, title }) {
+  return (
+    <button
+      className="bookmark-btn"
+      title={title || (active ? 'Remove from Watchlist' : 'Add to Watchlist')}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      style={{ color: active ? '#f59e0b' : '#c8ceda' }}
+    >
+      {active ? '★' : '☆'}
+    </button>
+  );
 }

@@ -15,6 +15,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import DatabaseCtor from 'better-sqlite3';
+import { EXCLUDED_CIN_SLUGS } from './courseraCinExclusions.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DB_FILE = process.env.DASHBOARD_DB_FILE || join(__dirname, 'dashboard.db');
@@ -73,6 +74,27 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS coupon_quota (
+    course_id TEXT PRIMARY KEY,
+    remaining_coupon_count INTEGER,
+    updated_at TEXT NOT NULL
+  );
+
+  -- Real numeric Udemy course id (as used by Udemy's own bulk-coupon-creation
+  -- tool export), matched by title to our course_id (the Instructor API's
+  -- base64-ish id). Manually imported from a CSV export, not scraped.
+  CREATE TABLE IF NOT EXISTS udemy_real_course_ids (
+    course_id TEXT PRIMARY KEY,
+    real_course_id INTEGER,
+    title TEXT,
+    currency TEXT,
+    best_price_value REAL,
+    min_custom_price REAL,
+    max_custom_price REAL,
+    coupons_remaining INTEGER,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS coursera_courses (
     id TEXT PRIMARY KEY,
     name TEXT,
@@ -93,9 +115,53 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS coursera_instructor_check (
+  -- Slug + publish status per course, merge-written (never wiped by the
+  -- Looker-driven coursera_metrics refresh above, which doesn't know slugs).
+  -- Same enrichment pattern as coursera_course_instructors below.
+  CREATE TABLE IF NOT EXISTS coursera_course_status (
+    course_name TEXT PRIMARY KEY,
+    slug TEXT,
+    status TEXT,
+    updated_at TEXT NOT NULL
+  );
+
+  -- Real per-course revenue, manually imported from partner-provided revenue
+  -- reports (e.g. "ANGUS + ALEX ... .xlsx") — Coursera's Partner API exposes
+  -- no revenue data at all, for either the Starweaver or CIN account, so
+  -- there is no live scrape source for this; it's refreshed only when a new
+  -- report file is provided. Keyed by slug, applies across BOTH coursera_metrics
+  -- (Starweaver) and coursera_cin_metrics (CIN) — confirmed by slug overlap
+  -- that a single revenue report covers courses living in both accounts.
+  CREATE TABLE IF NOT EXISTS coursera_revenue_import (
+    slug TEXT PRIMARY KEY,
+    course_name TEXT,
+    revenue REAL,
+    completions INTEGER,
+    quarter_count INTEGER,
+    source_file TEXT,
+    imported_at TEXT NOT NULL
+  );
+
+  -- A handful of real learner reviews per course (text + rating), separate
+  -- from the aggregate rating column in coursera_metrics since it's one-to-many.
+  -- Fetched via Coursera's feedback.v1 API, keyed by slug (needs
+  -- coursera_course_status.slug populated first).
+  CREATE TABLE IF NOT EXISTS coursera_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL,
+    course_name TEXT,
+    rating INTEGER,
+    review_text TEXT,
+    reviewer_name TEXT,
+    review_date TEXT,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_coursera_reviews_slug ON coursera_reviews(slug);
+
+  CREATE TABLE IF NOT EXISTS coursera_course_instructors (
     course_name TEXT PRIMARY KEY,
     has_starweaver_instructor INTEGER,
+    instructor_names TEXT,
     updated_at TEXT NOT NULL
   );
 
@@ -104,6 +170,49 @@ db.exec(`
     value INTEGER,
     updated_at TEXT NOT NULL
   );
+
+  -- Coursera CIN: a second partner account ("coursera" org slug) reachable from
+  -- the same Coursera login as Starweaver — fully separate courses/metrics, kept
+  -- in its own tables rather than mixed into the coursera_* ones above.
+  CREATE TABLE IF NOT EXISTS coursera_cin_courses (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    slug TEXT,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS coursera_cin_metrics (
+    slug TEXT PRIMARY KEY,
+    course_name TEXT,
+    domain TEXT,
+    in_specialization INTEGER,
+    launch_date TEXT,
+    enrollments INTEGER,
+    paid_enrollments INTEGER,
+    completions INTEGER,
+    completion_rate REAL,
+    rating REAL,
+    status TEXT,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS coursera_cin_overview_kpis (
+    label TEXT PRIMARY KEY,
+    value INTEGER,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS coursera_cin_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL,
+    course_name TEXT,
+    rating INTEGER,
+    review_text TEXT,
+    reviewer_name TEXT,
+    review_date TEXT,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_coursera_cin_reviews_slug ON coursera_cin_reviews(slug);
 
   CREATE TABLE IF NOT EXISTS engagement_meta (
     key TEXT PRIMARY KEY,
@@ -153,6 +262,17 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS go1_course_history (
+    course_name TEXT NOT NULL,
+    month TEXT NOT NULL,
+    enrolments INTEGER,
+    completions INTEGER,
+    total_minutes INTEGER,
+    avg_session_minutes INTEGER,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (course_name, month)
+  );
+
   CREATE TABLE IF NOT EXISTS go1_courses (
     name TEXT PRIMARY KEY,
     enrolments INTEGER,
@@ -161,6 +281,19 @@ db.exec(`
     avg_session_minutes INTEGER,
     month TEXT,
     updated_at TEXT NOT NULL
+  );
+
+  -- A small cross-platform watchlist — pin specific courses (regardless of
+  -- platform) to check daily without hunting through the full course lists.
+  -- course_key is whatever identifier that platform's data already uses:
+  -- Udemy -> course id, Coursera/CIN -> slug, FutureLearn -> slug, Go1 -> name.
+  CREATE TABLE IF NOT EXISTS bookmarks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform TEXT NOT NULL,
+    course_key TEXT NOT NULL,
+    title TEXT,
+    added_at TEXT NOT NULL,
+    UNIQUE(platform, course_key)
   );
 
   CREATE TABLE IF NOT EXISTS scrape_runs (
@@ -353,13 +486,18 @@ export function readEngagement() {
   const monthly = db.prepare('SELECT month, minutes_taught AS minutesTaught, active_students AS activeStudents FROM engagement_monthly ORDER BY month').all();
   const ubMonthly = db.prepare('SELECT month, ub_minutes AS ubMinutes, non_ub_minutes AS nonUbMinutes FROM engagement_ub_monthly ORDER BY month').all();
 
-  // Attach each course's last 3 months of minutes (most recent first: this month, last month, 2 months ago)
-  // so the client can render a "minutes consumed by month" report without its own date math.
+  // Attach each course's last 3 FULLY COMPLETED months of minutes (most recent
+  // first) so the client can render a "minutes consumed by month" report without
+  // its own date math. The current calendar month is always excluded — it's
+  // partial/in-progress and not comparable to a full month's total.
   const courseMonthlyMap = {};
   for (const r of db.prepare('SELECT course_id, month, minutes_taught FROM engagement_course_monthly').all()) {
     (courseMonthlyMap[r.course_id] ||= {})[r.month] = r.minutes_taught;
   }
-  const recentMonths = monthly.slice(-3).map((m) => m.month).reverse();
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const completedMonthly = monthly.filter((m) => !m.month.startsWith(currentMonthKey));
+  const recentMonths = completedMonthly.slice(-3).map((m) => m.month).reverse();
   for (const [courseId, c] of Object.entries(perCourse)) {
     c.recentMonths = recentMonths.map((month) => ({ month, minutes: courseMonthlyMap[courseId]?.[month] ?? null }));
   }
@@ -448,6 +586,64 @@ export function readCoupons() {
   return { perCourse, scrapedAt };
 }
 
+// --- Coupon quota (merge) --------------------------------------------------
+// Per-course "remaining_coupon_count" from /coupons-v2/meta/ — how many more
+// coupons Udemy will let you create this month on that course (a rolling
+// monthly allowance, NOT a fixed lifetime cap, and independent of whether any
+// currently-active coupon exists).
+const upsertCouponQuotaStmt = db.prepare(
+  `INSERT INTO coupon_quota (course_id, remaining_coupon_count, updated_at) VALUES (?, ?, ?)
+   ON CONFLICT(course_id) DO UPDATE SET remaining_coupon_count = excluded.remaining_coupon_count, updated_at = excluded.updated_at`
+);
+export function writeCouponQuota(perCourse) {
+  const ts = nowIso();
+  const rows = Object.entries(perCourse || {}).map(([course_id, remaining]) => ({ course_id, remaining }));
+  return upsertMerge('coupon_quota', rows, (r) => upsertCouponQuotaStmt.run(r.course_id, r.remaining, ts), { job: 'coupon_quota' });
+}
+export function readCouponQuota() {
+  const rows = db.prepare('SELECT course_id, remaining_coupon_count FROM coupon_quota').all();
+  const scrapedAt = db.prepare('SELECT MAX(updated_at) AS t FROM coupon_quota').get().t;
+  const perCourse = {};
+  for (const r of rows) perCourse[r.course_id] = r.remaining_coupon_count;
+  return { perCourse, scrapedAt };
+}
+
+// --- Udemy real course ids (manual CSV import, upsert-merge) ---------------
+const upsertRealCourseIdStmt = db.prepare(
+  `INSERT INTO udemy_real_course_ids
+     (course_id, real_course_id, title, currency, best_price_value, min_custom_price, max_custom_price, coupons_remaining, updated_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+   ON CONFLICT(course_id) DO UPDATE SET
+     real_course_id = excluded.real_course_id, title = excluded.title, currency = excluded.currency,
+     best_price_value = excluded.best_price_value, min_custom_price = excluded.min_custom_price,
+     max_custom_price = excluded.max_custom_price, coupons_remaining = excluded.coupons_remaining,
+     updated_at = excluded.updated_at`
+);
+export function writeUdemyRealCourseIds(rows) {
+  const ts = nowIso();
+  return upsertMerge(
+    'udemy_real_course_ids', rows,
+    (r) => upsertRealCourseIdStmt.run(
+      r.courseId, r.realCourseId, r.title, r.currency ?? null,
+      r.bestPriceValue ?? null, r.minCustomPrice ?? null, r.maxCustomPrice ?? null,
+      r.couponsRemaining ?? null, ts
+    ),
+    { job: 'udemy_real_course_ids' }
+  );
+}
+export function readUdemyRealCourseIds() {
+  const rows = db.prepare('SELECT * FROM udemy_real_course_ids').all();
+  const scrapedAt = db.prepare('SELECT MAX(updated_at) AS t FROM udemy_real_course_ids').get().t;
+  const perCourse = {};
+  for (const r of rows) {
+    perCourse[r.course_id] = {
+      realCourseId: r.real_course_id, currency: r.currency, bestPriceValue: r.best_price_value,
+      minCustomPrice: r.min_custom_price, maxCustomPrice: r.max_custom_price, couponsRemaining: r.coupons_remaining,
+    };
+  }
+  return { perCourse, scrapedAt };
+}
+
 // --- Transcripts (merge) ---------------------------------------------------
 const upsertTranscriptStmt = db.prepare(
   `INSERT INTO transcripts (course_id, languages, updated_at) VALUES (?, ?, ?)
@@ -507,32 +703,126 @@ export function readCourseraMetrics() {
   const rows = db.prepare('SELECT * FROM coursera_metrics').all();
   const scrapedAt = db.prepare('SELECT MAX(updated_at) AS t FROM coursera_metrics').get().t;
   const courses = rows.map((r) => ({
-    name: r.course_name, domain: r.domain, inSpecialization: !!r.in_specialization, launchDate: r.launch_date,
+    name: (r.course_name || '').trim(), domain: r.domain, inSpecialization: !!r.in_specialization, launchDate: r.launch_date,
     enrollments: r.enrollments, paidEnrollments: r.paid_enrollments, completions: r.completions,
     completionRate: r.completion_rate, rating: r.rating,
   }));
   return { courses, scrapedAt };
 }
 
-// --- Coursera instructor check (guarded snapshot) -------------------------
-// Stores only the course names where instructors@starweaver.com is on staff
-// with the "Instructor" role — absence of a row means "no" (or "unknown, not
-// yet checked" if the table has never been populated).
-const insertCourseraInstructorCheckStmt = db.prepare(
-  'INSERT INTO coursera_instructor_check (course_name, has_starweaver_instructor, updated_at) VALUES (?, 1, ?)'
+// --- Coursera course instructors (guarded snapshot) -----------------------
+// Per course: whether instructors@starweaver.com is on staff with the
+// "Instructor" role, and the real named instructors (excluding that shared
+// account) — a course with no row means "not yet checked", not "no instructor".
+const insertCourseraCourseInstructorsStmt = db.prepare(
+  'INSERT INTO coursera_course_instructors (course_name, has_starweaver_instructor, instructor_names, updated_at) VALUES (?, ?, ?, ?)'
 );
-export function writeCourseraInstructorCheck(courseNames) {
+export function writeCourseraCourseInstructors(rows) {
   const ts = nowIso();
   return guardedReplaceAll(
-    'coursera_instructor_check', courseNames,
-    (name) => insertCourseraInstructorCheckStmt.run(name, ts),
-    { job: 'coursera_instructor_check' }
+    'coursera_course_instructors', rows,
+    (r) => insertCourseraCourseInstructorsStmt.run(r.courseName, r.hasStarweaverInstructor ? 1 : 0, JSON.stringify(r.instructorNames || []), ts),
+    { job: 'coursera_course_instructors' }
   );
 }
-export function readCourseraInstructorCheck() {
-  const rows = db.prepare('SELECT course_name FROM coursera_instructor_check').all();
-  const scrapedAt = db.prepare('SELECT MAX(updated_at) AS t FROM coursera_instructor_check').get().t;
-  return { names: rows.map((r) => r.course_name), scrapedAt };
+export function readCourseraCourseInstructors() {
+  const rows = db.prepare('SELECT course_name, has_starweaver_instructor, instructor_names FROM coursera_course_instructors').all();
+  const scrapedAt = db.prepare('SELECT MAX(updated_at) AS t FROM coursera_course_instructors').get().t;
+  const byName = {};
+  for (const r of rows) {
+    const names = JSON.parse(r.instructor_names || '[]').map((n) => (n || '').trim()).filter(Boolean);
+    byName[r.course_name] = { hasStarweaverInstructor: !!r.has_starweaver_instructor, instructorNames: names };
+  }
+  return { byName, scrapedAt };
+}
+
+// --- Coursera course status + slug (merge — never wiped by the Looker-driven
+// coursera_metrics refresh, which has no slug of its own) ------------------
+const upsertCourseraCourseStatusStmt = db.prepare(
+  `INSERT INTO coursera_course_status (course_name, slug, status, updated_at) VALUES (?, ?, ?, ?)
+   ON CONFLICT(course_name) DO UPDATE SET slug = excluded.slug, status = excluded.status, updated_at = excluded.updated_at`
+);
+export function writeCourseraCourseStatus(rows) {
+  const ts = nowIso();
+  return upsertMerge('coursera_course_status', rows, (r) => upsertCourseraCourseStatusStmt.run(r.courseName, r.slug ?? null, r.status ?? null, ts), { job: 'coursera_course_status' });
+}
+export function readCourseraCourseStatus() {
+  const rows = db.prepare('SELECT course_name, slug, status FROM coursera_course_status').all();
+  const scrapedAt = db.prepare('SELECT MAX(updated_at) AS t FROM coursera_course_status').get().t;
+  const byName = {};
+  for (const r of rows) byName[r.course_name] = { slug: r.slug, status: r.status };
+  return { byName, scrapedAt };
+}
+
+// --- Coursera revenue (manual import — see table comment) -----------------
+const upsertCourseraRevenueStmt = db.prepare(
+  `INSERT INTO coursera_revenue_import (slug, course_name, revenue, completions, quarter_count, source_file, imported_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?)
+   ON CONFLICT(slug) DO UPDATE SET course_name = excluded.course_name, revenue = excluded.revenue,
+     completions = excluded.completions, quarter_count = excluded.quarter_count,
+     source_file = excluded.source_file, imported_at = excluded.imported_at`
+);
+export function writeCourseraRevenueImport(rows, sourceFile) {
+  const ts = nowIso();
+  const tx = db.transaction(() => {
+    for (const r of rows) upsertCourseraRevenueStmt.run(r.slug, r.courseName ?? null, r.revenue ?? 0, r.completions ?? 0, r.quarterCount ?? 0, sourceFile, ts);
+  });
+  tx();
+  return { ok: true, written: rows.length };
+}
+export function readCourseraRevenueImport() {
+  const rows = db.prepare('SELECT slug, course_name, revenue, completions, quarter_count, source_file, imported_at FROM coursera_revenue_import').all();
+  const importedAt = db.prepare('SELECT MAX(imported_at) AS t FROM coursera_revenue_import').get().t;
+  const bySlug = {};
+  for (const r of rows) bySlug[r.slug] = { revenue: r.revenue, completions: r.completions, quarterCount: r.quarter_count, sourceFile: r.source_file };
+  return { bySlug, importedAt, totalRevenue: rows.reduce((s, r) => s + (r.revenue || 0), 0) };
+}
+
+// --- Coursera reviews (guarded snapshot — SW) ------------------------------
+const insertCourseraReviewStmt = db.prepare(
+  `INSERT INTO coursera_reviews (slug, course_name, rating, review_text, reviewer_name, review_date, updated_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?)`
+);
+export function writeCourseraReviews(reviews) {
+  const ts = nowIso();
+  return guardedReplaceAll(
+    'coursera_reviews', reviews,
+    (r) => insertCourseraReviewStmt.run(r.slug, r.courseName ?? null, r.rating ?? null, r.reviewText ?? null, r.reviewerName ?? null, r.reviewDate ?? null, ts),
+    { job: 'coursera_reviews', minRatio: 0 } // count naturally varies a lot run to run — don't guard on shrink
+  );
+}
+export function readCourseraReviews() {
+  const rows = db.prepare('SELECT slug, course_name, rating, review_text, reviewer_name, review_date FROM coursera_reviews').all();
+  const scrapedAt = db.prepare('SELECT MAX(updated_at) AS t FROM coursera_reviews').get().t;
+  const bySlug = {};
+  for (const r of rows) {
+    (bySlug[r.slug] ||= []).push({ rating: r.rating, reviewText: r.review_text, reviewerName: r.reviewer_name, reviewDate: r.review_date });
+  }
+  return { bySlug, scrapedAt };
+}
+
+// --- Coursera CIN reviews (guarded snapshot) -------------------------------
+const insertCourseraCinReviewStmt = db.prepare(
+  `INSERT INTO coursera_cin_reviews (slug, course_name, rating, review_text, reviewer_name, review_date, updated_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?)`
+);
+export function writeCourseraCinReviews(reviews) {
+  const ts = nowIso();
+  return guardedReplaceAll(
+    'coursera_cin_reviews', reviews,
+    (r) => insertCourseraCinReviewStmt.run(r.slug, r.courseName ?? null, r.rating ?? null, r.reviewText ?? null, r.reviewerName ?? null, r.reviewDate ?? null, ts),
+    { job: 'coursera_cin_reviews', minRatio: 0 }
+  );
+}
+export function readCourseraCinReviews() {
+  const rows = db.prepare('SELECT slug, course_name, rating, review_text, reviewer_name, review_date FROM coursera_cin_reviews').all()
+    .filter((r) => !EXCLUDED_CIN_SLUGS.has(r.slug));
+  const scrapedAt = db.prepare('SELECT MAX(updated_at) AS t FROM coursera_cin_reviews').get().t;
+  const bySlug = {};
+  for (const r of rows) {
+    (bySlug[r.slug] ||= []).push({ rating: r.rating, reviewText: r.review_text, reviewerName: r.reviewer_name, reviewDate: r.review_date });
+  }
+  return { bySlug, scrapedAt };
 }
 
 // --- Coursera overview KPIs (guarded snapshot) ----------------------------
@@ -549,6 +839,75 @@ export function writeCourseraOverview(kpis) {
 export function readCourseraOverview() {
   const rows = db.prepare('SELECT label, value FROM coursera_overview_kpis').all();
   const scrapedAt = db.prepare('SELECT MAX(updated_at) AS t FROM coursera_overview_kpis').get().t;
+  const kpis = {};
+  for (const r of rows) kpis[r.label] = r.value;
+  return { kpis, scrapedAt };
+}
+
+// --- Coursera CIN courses (guarded snapshot) — second partner, see table comment ---
+const insertCourseraCinCourseStmt = db.prepare('INSERT INTO coursera_cin_courses (id, name, slug, updated_at) VALUES (?, ?, ?, ?)');
+export function writeCourseraCinCourses(courses) {
+  const ts = nowIso();
+  return guardedReplaceAll(
+    'coursera_cin_courses', courses,
+    (c) => insertCourseraCinCourseStmt.run(c.id, c.name, c.slug, ts),
+    { job: 'coursera_cin_courses' }
+  );
+}
+export function readCourseraCinCourses() {
+  const courses = db.prepare('SELECT id, name, slug FROM coursera_cin_courses').all()
+    .filter((c) => !EXCLUDED_CIN_SLUGS.has(c.slug));
+  const scrapedAt = db.prepare('SELECT MAX(updated_at) AS t FROM coursera_cin_courses').get().t;
+  return { courses, scrapedAt };
+}
+
+// --- Coursera CIN metrics (guarded snapshot) ------------------------------
+// Keyed by slug, not course_name — CIN's much larger catalog has genuine
+// duplicate titles (e.g. two separate "GenAI for Learning and Development"
+// courses), which crashed an earlier version of this table keyed by name.
+const insertCourseraCinMetricStmt = db.prepare(
+  `INSERT INTO coursera_cin_metrics
+     (slug, course_name, domain, in_specialization, launch_date, enrollments, paid_enrollments, completions, completion_rate, rating, status, updated_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+);
+export function writeCourseraCinMetrics(courses) {
+  const ts = nowIso();
+  return guardedReplaceAll(
+    'coursera_cin_metrics', courses,
+    (c) => insertCourseraCinMetricStmt.run(
+      c.slug, c.name, c.domain ?? null, c.inSpecialization ? 1 : 0, c.launchDate ?? null,
+      c.enrollments ?? null, c.paidEnrollments ?? null, c.completions ?? null,
+      c.completionRate ?? null, c.rating ?? null, c.status ?? null, ts
+    ),
+    { job: 'coursera_cin_metrics' }
+  );
+}
+export function readCourseraCinMetrics() {
+  const rows = db.prepare('SELECT * FROM coursera_cin_metrics').all()
+    .filter((r) => !EXCLUDED_CIN_SLUGS.has(r.slug));
+  const scrapedAt = db.prepare('SELECT MAX(updated_at) AS t FROM coursera_cin_metrics').get().t;
+  const courses = rows.map((r) => ({
+    name: (r.course_name || '').trim(), slug: r.slug, domain: r.domain, inSpecialization: !!r.in_specialization, launchDate: r.launch_date,
+    enrollments: r.enrollments, paidEnrollments: r.paid_enrollments, completions: r.completions,
+    completionRate: r.completion_rate, rating: r.rating, status: r.status,
+  }));
+  return { courses, scrapedAt };
+}
+
+// --- Coursera CIN overview KPIs (guarded snapshot) ------------------------
+const insertCourseraCinKpiStmt = db.prepare('INSERT INTO coursera_cin_overview_kpis (label, value, updated_at) VALUES (?, ?, ?)');
+export function writeCourseraCinOverview(kpis) {
+  const ts = nowIso();
+  const rows = Object.entries(kpis || {}).map(([label, value]) => ({ label, value }));
+  return guardedReplaceAll(
+    'coursera_cin_overview_kpis', rows,
+    (r) => insertCourseraCinKpiStmt.run(r.label, r.value, ts),
+    { job: 'coursera_cin_overview' }
+  );
+}
+export function readCourseraCinOverview() {
+  const rows = db.prepare('SELECT label, value FROM coursera_cin_overview_kpis').all();
+  const scrapedAt = db.prepare('SELECT MAX(updated_at) AS t FROM coursera_cin_overview_kpis').get().t;
   const kpis = {};
   for (const r of rows) kpis[r.label] = r.value;
   return { kpis, scrapedAt };
@@ -620,17 +979,81 @@ export function readGo1Courses() {
   return { courses, month, scrapedAt };
 }
 
+// --- Go1 course history (guarded, full re-scan every run) -----------------
+// Go1 only exposes a MONTHLY snapshot per request (no lifetime endpoint), so
+// "full data" means scraping every month back to when Go1 data starts (found
+// live: March 2025 and earlier are empty, April 2025 is the first real month)
+// and summing per course. Table is wiped+reinserted whole on each history
+// scrape (cheap — ~15 months) rather than merged incrementally, so a month
+// that Go1 revises retroactively self-corrects instead of going stale.
+const insertGo1HistoryStmt = db.prepare(
+  `INSERT INTO go1_course_history (course_name, month, enrolments, completions, total_minutes, avg_session_minutes, updated_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?)`
+);
+export function writeGo1History(rows) {
+  const ts = nowIso();
+  return guardedReplaceAll(
+    'go1_course_history', rows,
+    (r) => insertGo1HistoryStmt.run(r.courseName, r.month, r.enrolments ?? null, r.completions ?? null, r.totalMinutes ?? null, r.avgSessionMinutes ?? null, ts),
+    { job: 'go1_course_history', minRatio: 0.7 }
+  );
+}
+export function readGo1Lifetime() {
+  const rows = db.prepare('SELECT course_name, month, enrolments, completions, total_minutes, avg_session_minutes FROM go1_course_history ORDER BY month').all();
+  const byCourse = {};
+  for (const r of rows) {
+    const c = (byCourse[r.course_name] ||= {
+      name: r.course_name, enrolments: 0, completions: 0, totalMinutes: 0,
+      avgSessionSum: 0, avgSessionCount: 0, months: [],
+    });
+    c.enrolments += r.enrolments || 0;
+    c.completions += r.completions || 0;
+    c.totalMinutes += r.total_minutes || 0;
+    if (r.avg_session_minutes != null) { c.avgSessionSum += r.avg_session_minutes; c.avgSessionCount += 1; }
+    c.months.push(r.month);
+  }
+  const courses = Object.values(byCourse).map((c) => ({
+    name: c.name, enrolments: c.enrolments, completions: c.completions, totalMinutes: c.totalMinutes,
+    avgSessionMinutes: c.avgSessionCount ? Math.round(c.avgSessionSum / c.avgSessionCount) : null,
+    monthsCovered: c.months.length,
+  }));
+  const months = [...new Set(rows.map((r) => r.month))].sort();
+  const scrapedAt = db.prepare('SELECT MAX(updated_at) AS t FROM go1_course_history').get().t;
+  return { courses, firstMonth: months[0] ?? null, lastMonth: months[months.length - 1] ?? null, monthCount: months.length, scrapedAt };
+}
+
+// --- Bookmarks (user-managed watchlist, not a scraped dataset) ------------
+const insertBookmarkStmt = db.prepare(
+  'INSERT OR IGNORE INTO bookmarks (platform, course_key, title, added_at) VALUES (?, ?, ?, ?)'
+);
+export function addBookmark({ platform, courseKey, title }) {
+  const info = insertBookmarkStmt.run(platform, courseKey, title ?? null, nowIso());
+  return { added: info.changes > 0 };
+}
+export function removeBookmark({ platform, courseKey }) {
+  const info = db.prepare('DELETE FROM bookmarks WHERE platform = ? AND course_key = ?').run(platform, courseKey);
+  return { removed: info.changes > 0 };
+}
+export function readBookmarks() {
+  return db.prepare('SELECT platform, course_key AS courseKey, title, added_at AS addedAt FROM bookmarks ORDER BY added_at DESC').all();
+}
+
 // --- Cross-cutting: last-update / scrape history --------------------------
 const ALL_TABLES = [
   'enrollment', 'revenue_course', 'revenue_monthly', 'revenue_meta', 'captions',
-  'coupons', 'transcripts', 'coursera_courses', 'coursera_metrics', 'coursera_overview_kpis', 'coursera_instructor_check',
-  'futurelearn_courses', 'go1_courses', 'engagement_course', 'engagement_monthly', 'engagement_meta', 'engagement_ub_monthly',
+  'coupons', 'coupon_quota', 'udemy_real_course_ids', 'transcripts', 'coursera_courses', 'coursera_metrics', 'coursera_overview_kpis', 'coursera_course_instructors',
+  'coursera_course_status', 'coursera_reviews', 'coursera_cin_reviews', 'coursera_revenue_import',
+  'coursera_cin_courses', 'coursera_cin_metrics', 'coursera_cin_overview_kpis',
+  'futurelearn_courses', 'go1_courses', 'go1_course_history', 'engagement_course', 'engagement_monthly', 'engagement_meta', 'engagement_ub_monthly',
   'engagement_course_monthly',
 ];
+// Most scrape tables stamp `updated_at`; a few use a different column name.
+const TIMESTAMP_COLUMN_OVERRIDES = { coursera_revenue_import: 'imported_at' };
 export function latestUpdatedAt() {
   let newest = null;
   for (const t of ALL_TABLES) {
-    const row = db.prepare(`SELECT MAX(updated_at) AS t FROM ${t}`).get();
+    const col = TIMESTAMP_COLUMN_OVERRIDES[t] || 'updated_at';
+    const row = db.prepare(`SELECT MAX(${col}) AS t FROM ${t}`).get();
     if (row.t && (!newest || new Date(row.t) > new Date(newest))) newest = row.t;
   }
   return newest;

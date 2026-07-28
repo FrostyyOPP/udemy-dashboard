@@ -9,9 +9,12 @@ import compression from 'compression';
 import { udemyGet } from './udemyClient.js';
 import { SUPPORTED_LANGS, startJob as startCaptionJob, getJob as getCaptionJob } from './localizeCaptions.js';
 import {
-  readEnrollment, readRevenue, readCaptions, readCoupons, readTranscripts, setTranscript,
-  readCourseraCourses, readCourseraMetrics, readCourseraOverview, readCourseraInstructorCheck, latestUpdatedAt,
-  readFutureLearnCourses, readGo1Courses, readEngagement,
+  readEnrollment, readRevenue, readCaptions, readCoupons, readCouponQuota, readUdemyRealCourseIds, readTranscripts, setTranscript,
+  readCourseraCourses, readCourseraMetrics, readCourseraOverview, readCourseraCourseInstructors, latestUpdatedAt,
+  readCourseraCourseStatus, readCourseraReviews, readCourseraCinReviews, readCourseraRevenueImport,
+  readBookmarks, addBookmark, removeBookmark,
+  readCourseraCinCourses, readCourseraCinMetrics, readCourseraCinOverview,
+  readFutureLearnCourses, readGo1Courses, readGo1Lifetime, readEngagement,
 } from './db.js';
 
 const app = express();
@@ -75,6 +78,21 @@ app.get('/api/last-update', (req, res) => {
   const lu = join(__dirname, 'last-update.json');
   if (existsSync(lu)) { try { run = JSON.parse(readFileSync(lu, 'utf8')); } catch {} }
   res.json({ updatedAt: latestUpdatedAt(), lastRun: run });
+});
+
+// --- Bookmarks (cross-platform watchlist) ---------------------------------
+app.get('/api/bookmarks', (req, res) => {
+  res.json({ bookmarks: readBookmarks() });
+});
+app.post('/api/bookmarks', (req, res) => {
+  const { platform, courseKey, title } = req.body || {};
+  if (!platform || !courseKey) return res.status(400).json({ error: 'platform and courseKey are required' });
+  res.json(addBookmark({ platform, courseKey, title }));
+});
+app.delete('/api/bookmarks', (req, res) => {
+  const { platform, courseKey } = req.body || {};
+  if (!platform || !courseKey) return res.status(400).json({ error: 'platform and courseKey are required' });
+  res.json(removeBookmark({ platform, courseKey }));
 });
 
 // --- Udemy account connection (session) ----------------------------------
@@ -211,12 +229,65 @@ app.get('/api/engagement', (req, res) => {
 const normalizeName = (s) => (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
 app.get('/api/coursera/metrics', (req, res) => {
   const metrics = readCourseraMetrics();
-  const { names: instructorNames } = readCourseraInstructorCheck();
-  const instructorSet = new Set(instructorNames.map(normalizeName));
+  const { byName: instructorByName } = readCourseraCourseInstructors();
+  const { byName: statusByName } = readCourseraCourseStatus();
+  const { bySlug: revenueBySlug } = readCourseraRevenueImport();
+  const normalizedInstructors = {};
+  for (const [name, v] of Object.entries(instructorByName)) normalizedInstructors[normalizeName(name)] = v;
+  const normalizedStatus = {};
+  for (const [name, v] of Object.entries(statusByName)) normalizedStatus[normalizeName(name)] = v;
   res.json({
     ...metrics,
-    courses: metrics.courses.map((c) => ({ ...c, hasStarweaverInstructor: instructorSet.has(normalizeName(c.name)) })),
+    courses: metrics.courses.map((c) => {
+      const info = normalizedInstructors[normalizeName(c.name)];
+      const statusInfo = normalizedStatus[normalizeName(c.name)];
+      const slug = statusInfo?.slug || null;
+      const revInfo = slug ? revenueBySlug[slug] : null;
+      return {
+        ...c,
+        hasStarweaverInstructor: !!info?.hasStarweaverInstructor, instructorNames: info?.instructorNames || [],
+        slug, status: statusInfo?.status || null,
+        revenue: revInfo?.revenue ?? null, revenueCompletions: revInfo?.completions ?? null,
+      };
+    }),
   });
+});
+
+// Real learner review text (not just the aggregate rating) — Starweaver.
+app.get('/api/coursera/reviews', (req, res) => {
+  res.json(readCourseraReviews());
+});
+
+// Draft/preenroll Starweaver courses not yet in the Looker metrics snapshot
+// (that dashboard only ever shows launched courses with real traffic).
+app.get('/api/coursera/course-status', (req, res) => {
+  res.json(readCourseraCourseStatus());
+});
+
+// Coursera CIN — second partner account (org slug "coursera") reachable from
+// the same login as Starweaver. Fully separate course catalog/metrics.
+app.get('/api/coursera-cin/courses', (req, res) => {
+  res.json(readCourseraCinCourses());
+});
+app.get('/api/coursera-cin/overview', (req, res) => {
+  res.json(readCourseraCinOverview());
+});
+app.get('/api/coursera-cin/metrics', (req, res) => {
+  const metrics = readCourseraCinMetrics();
+  const { bySlug: revenueBySlug } = readCourseraRevenueImport();
+  res.json({
+    ...metrics,
+    courses: metrics.courses.map((c) => {
+      const revInfo = c.slug ? revenueBySlug[c.slug] : null;
+      return { ...c, revenue: revInfo?.revenue ?? null, revenueCompletions: revInfo?.completions ?? null };
+    }),
+  });
+});
+app.get('/api/coursera/revenue', (req, res) => {
+  res.json(readCourseraRevenueImport());
+});
+app.get('/api/coursera-cin/reviews', (req, res) => {
+  res.json(readCourseraCinReviews());
 });
 
 // FutureLearn course list (title, code, category, status, run date, wishlist, enrollment).
@@ -228,6 +299,12 @@ app.get('/api/futurelearn/courses', (req, res) => {
 // month's snapshot (Go1 doesn't expose a lifetime aggregate to partners).
 app.get('/api/go1/courses', (req, res) => {
   res.json(readGo1Courses());
+});
+
+// Go1 full-history totals, built by scraping every month back to when Go1
+// data starts and summing per course (no lifetime endpoint exists upstream).
+app.get('/api/go1/lifetime', (req, res) => {
+  res.json(readGo1Lifetime());
 });
 
 // Bulk-create coupons. User-triggered write. dryRun:true previews only.
@@ -332,16 +409,23 @@ app.get('/api/courses', wrap(async (req, res) => {
   const { perCourse, total: totalRevenue, currency } = readRevenue();
   const { perCourse: captions } = readCaptions();
   const { perCourse: coupons } = readCoupons();
+  const { perCourse: couponQuota } = readCouponQuota();
   const { perCourse: engagement } = readEngagement();
+  const { perCourse: realIds } = readUdemyRealCourseIds();
   const enrich = (c) => ({
     ...c,
     num_subscribers: counts[c.id] ?? null,
     revenue: perCourse[c.id] ?? null,
     caption_locales: captions[c.id] ?? null,
     coupons: coupons[c.id] ?? null,
+    remaining_coupon_count: couponQuota[c.id] ?? null,
     minutes_taught: engagement[c.id]?.minutesTaught ?? null,
     is_udemy_business: engagement[c.id]?.isUdemyBusiness ?? null,
     recent_months: engagement[c.id]?.recentMonths ?? null,
+    real_course_id: realIds[c.id]?.realCourseId ?? null,
+    best_price_value: realIds[c.id]?.bestPriceValue ?? null,
+    min_custom_price: realIds[c.id]?.minCustomPrice ?? null,
+    max_custom_price: realIds[c.id]?.maxCustomPrice ?? null,
   });
 
   if (req.query.page) {

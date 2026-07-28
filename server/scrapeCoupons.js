@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path';
 import { chromium } from 'playwright';
 import { minimizeWindow } from './browserWindow.js';
 import { udemyGet } from './udemyClient.js';
-import { writeCoupons } from './db.js';
+import { writeCoupons, writeCouponQuota } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const AUTH_FILE = join(__dirname, 'udemy-auth.json');
@@ -68,6 +68,7 @@ while (true) {
 }
 
 const perCourse = {};
+const quotaPerCourse = {};
 let done = 0, withCoupons = 0;
 for (const c of courses) {
   const data = await apiGet(`https://www.udemy.com/api-2.0/courses/${c.numId}/coupons-v2/?invalid=false&ordering=end_time,-created&page_size=50`);
@@ -81,8 +82,12 @@ for (const c of courses) {
     end: x.end_time,
     active: x.is_active,
   }));
+  const meta = await apiGet(`https://www.udemy.com/api-2.0/courses/${c.numId}/coupons-v2/meta/`);
   const id = c.slug && slugToId[c.slug];
-  if (id) perCourse[id] = list;
+  if (id) {
+    perCourse[id] = list;
+    if (meta?.remaining_coupon_count != null) quotaPerCourse[id] = meta.remaining_coupon_count;
+  }
   if (list.length) withCoupons++;
   done++;
   process.stdout.write(`\r  ${done}/${courses.length} · ${withCoupons} with active coupons`);
@@ -92,9 +97,10 @@ process.stdout.write('\n');
 await browser.close();
 
 const result = writeCoupons(perCourse);
+writeCouponQuota(quotaPerCourse);
 const totalCoupons = Object.values(perCourse).reduce((s, l) => s + l.length, 0);
 if (result.guarded) {
   console.error(`⚠️ Refused to write — only ${Object.keys(perCourse).length} courses covered, looks like a partial/failed run. Kept existing data. Re-run after reconnecting.`);
   process.exit(1);
 }
-console.log(`✅ ${withCoupons} courses have active coupons (${totalCoupons} total) → dashboard.db`);
+console.log(`✅ ${withCoupons} courses have active coupons (${totalCoupons} total) · quota checked for ${Object.keys(quotaPerCourse).length} courses → dashboard.db`);

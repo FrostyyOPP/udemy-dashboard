@@ -137,6 +137,7 @@
 .dcx .table-search:focus { outline: none; border-color: var(--blue-600); }
 .dcx .table-scroll { overflow-x: auto; }
 .dcx table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.dcx table.wide-table { width: max-content; min-width: 100%; }
 .dcx thead { background: transparent; border-bottom: 1px solid var(--border-light); }
 .dcx th { padding: 13px 24px; text-align: left; font-family: "IBM Plex Mono", monospace; font-weight: 600; color: var(--slate-400); text-transform: uppercase; font-size: 10.5px; letter-spacing: 1.5px; white-space: nowrap; cursor: pointer; user-select: none; }
 .dcx th.no-sort { cursor: default; }
@@ -145,6 +146,18 @@
 .dcx tbody tr.click { cursor: pointer; }
 .dcx tbody tr:hover { background: var(--bg-app); }
 .dcx td:first-child, .dcx td[style*="font-weight: 500"] { font-weight: 600; color: var(--navy-900); }
+
+.dcx .col-picker-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; min-width: 220px; max-height: 320px;
+  overflow-y: auto; background: #fff; border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(10,26,63,.14); padding: 8px;
+}
+.dcx .col-picker-item {
+  display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 6px;
+  font-size: 13px; cursor: pointer; user-select: none;
+}
+.dcx .col-picker-item:hover { background: var(--n50); }
+.dcx .col-picker-item input { accent-color: var(--blue-600); cursor: pointer; }
 
 /* Badges + bits */
 .dcx .platform-badge { display: inline-block; padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
@@ -159,6 +172,9 @@
 .dcx .pill.ok { background: rgba(12,155,174,.13); color: var(--teal-700); }
 .dcx .pill.draft { background: rgba(234,113,18,.15); color: var(--orange-500); }
 .dcx .lang-chip { background: var(--n100); padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+.dcx .bookmark-btn { background: none; border: none; cursor: pointer; font-size: 18px; line-height: 1; padding: 2px 4px; transition: transform .1s; }
+.dcx .bookmark-btn:hover { transform: scale(1.2); }
+.dcx .watchlist-empty { padding: 48px 24px; text-align: center; color: var(--slate-400); }
 .dcx .cov-track { width: 90px; height: 6px; background: var(--border-light); border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; }
 .dcx .cov-fill { height: 100%; background: var(--teal-600); }
 .dcx .muted { color: var(--slate-400); }
@@ -190,6 +206,8 @@
 .dcx.dark .table-search, .dcx.dark select, .dcx.dark input[type=text] { background: #0e1c3d; color: var(--navy-900); border-color: var(--border); }
 .dcx.dark .metric, .dcx.dark .lang-chip { background: #101b38; }
 .dcx.dark td, .dcx.dark th { border-color: var(--border-light); }
+.dcx.dark .col-picker-menu { background: #0e1c3d; border-color: var(--border); }
+.dcx.dark .col-picker-item:hover { background: #101b38; }
 
 /* Mobile menu button (hidden on desktop) */
 .dcx .menu-btn { display: none; }

@@ -1,15 +1,16 @@
-// Checks whether instructors@starweaver.com is on staff (role = "Instructor")
-// for every Coursera course, using the connected session + a HEADED browser.
-// KEY DISCOVERY: /api/staffMemberships.v1/?q=partnerStaffByCourse returns staff
-// memberships for the WHOLE partner in one call (not just the seed courseId) —
-// no per-course page visits needed. Writes to dashboard.db via db.js's guarded
-// writer. Run: npm run coursera:instructors
+// For every Coursera course, records the real named instructors (role =
+// "Instructor") and whether instructors@starweaver.com (a shared placeholder
+// account, not a real person) is among them — using the connected session +
+// a HEADED browser. KEY DISCOVERY: /api/staffMemberships.v1/?q=partnerStaffByCourse
+// returns staff memberships for the WHOLE partner in one call (not just the
+// seed courseId) — no per-course page visits needed. Writes to dashboard.db
+// via db.js's guarded writer. Run: npm run coursera:instructors
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { chromium } from 'playwright';
 import { minimizeWindow } from './browserWindow.js';
-import { readCourseraCourses, writeCourseraInstructorCheck } from './db.js';
+import { readCourseraCourses, writeCourseraCourseInstructors } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const AUTH_FILE = join(__dirname, 'coursera-auth.json');
@@ -61,6 +62,7 @@ if (!data?.elements || !data?.linked) {
 
 const users = data.linked['users.v1'] || [];
 const roleTemplates = data.linked['partnerRoleTemplates.v1'] || [];
+const usersById = Object.fromEntries(users.map((u) => [u.id, u]));
 const starweaverUser = users.find((u) => (u.email || '').toLowerCase() === STARWEAVER_INSTRUCTOR_EMAIL);
 if (!starweaverUser) {
   console.error(`❌ ${STARWEAVER_INSTRUCTOR_EMAIL} was not found in the partner's staff roster at all.`);
@@ -69,13 +71,15 @@ if (!starweaverUser) {
 }
 const instructorRoleIds = new Set(roleTemplates.filter((r) => r.name === 'Instructor').map((r) => r.id));
 
-const courseIds = new Set();
+// courseId -> Set of userIds with the Instructor role on that course.
+const instructorsByCourse = {};
 for (const el of data.elements) {
-  if (el.scope?.typeName === 'COURSE' && el.userId === starweaverUser.id && instructorRoleIds.has(el.roleId)) {
-    courseIds.add(el.scope.id);
+  if (el.scope?.typeName === 'COURSE' && instructorRoleIds.has(el.roleId)) {
+    (instructorsByCourse[el.scope.id] ||= new Set()).add(el.userId);
   }
 }
-console.log(`${STARWEAVER_INSTRUCTOR_EMAIL} is an Instructor on ${courseIds.size} courses. Resolving names…`);
+const courseIds = Object.keys(instructorsByCourse);
+console.log(`Found Instructor-role staff on ${courseIds.length} courses. Resolving names…`);
 
 async function nameFor(courseId) {
   return await page.evaluate(async (cid) => {
@@ -90,18 +94,27 @@ async function nameFor(courseId) {
   }, courseId);
 }
 
-const names = [];
-for (const id of courseIds) {
-  const name = await nameFor(id);
-  if (name) names.push(name.trim());
+const rows = [];
+for (const courseId of courseIds) {
+  const courseName = await nameFor(courseId);
   await sleep(300);
+  if (!courseName) continue;
+  const userIds = instructorsByCourse[courseId];
+  const hasStarweaverInstructor = userIds.has(starweaverUser.id);
+  const instructorNames = [...userIds]
+    .filter((id) => id !== starweaverUser.id)
+    .map((id) => usersById[id]?.fullName?.trim())
+    .filter(Boolean);
+  rows.push({ courseName: courseName.trim(), hasStarweaverInstructor, instructorNames });
 }
 
 await browser.close();
 
-const result = writeCourseraInstructorCheck(names);
+const result = writeCourseraCourseInstructors(rows);
+const withStarweaver = rows.filter((r) => r.hasStarweaverInstructor).length;
+const withNames = rows.filter((r) => r.instructorNames.length).length;
 if (result.guarded) {
-  console.error(`⚠️ Refused to write — only ${names.length} courses found, looks like a partial/failed run. Kept existing data. Re-run after reconnecting.`);
+  console.error(`⚠️ Refused to write — only ${rows.length} courses found, looks like a partial/failed run. Kept existing data. Re-run after reconnecting.`);
   process.exit(1);
 }
-console.log(`✅ ${names.length} courses have ${STARWEAVER_INSTRUCTOR_EMAIL} as Instructor → dashboard.db`);
+console.log(`✅ ${rows.length} courses checked · ${withStarweaver} have ${STARWEAVER_INSTRUCTOR_EMAIL} as Instructor · ${withNames} have a named instructor → dashboard.db`);

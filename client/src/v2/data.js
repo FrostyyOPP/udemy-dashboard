@@ -221,11 +221,13 @@ export function parseSmartQuery(query) {
 
 const csvCell = (v) => { const s = v == null ? '' : String(v); return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 export function exportCsv(rows) {
-  const headers = ['Title','Domain','Total Ratings','Total Enrollments','Enroll > 2k','Avg Rating','Revenue','Captions','Coupons','Paul','Globecon','SME','URL'];
+  const headers = ['Title','Domain','Total Ratings','Total Enrollments','Enroll > 2k','Avg Rating','Revenue','Captions','Coupons Active','Coupons Left','Paul','Globecon','SME','URL'];
   const data = rows.map((c) => [
     c.title, c.domain, c.num_reviews ?? 0, c.num_subscribers ?? '', c.above2k,
     c.rating ? Number(c.rating).toFixed(2) : '', c.revenue ?? '',
-    capNames(c.caption_locales).join('; '), Array.isArray(c.coupons) ? c.coupons.length : '',
+    capNames(c.caption_locales).join('; '),
+    Array.isArray(c.coupons) ? c.coupons.length : '',
+    c.remaining_coupon_count ?? '',
     c.hasPaul ? 'Yes' : 'No', c.isFinance ? (c.hasGlobecon ? 'Yes' : 'No') : 'N/A', c.sme?.join('; ') || '',
     c.url ? `https://www.udemy.com${c.url}` : '',
   ]);
@@ -254,4 +256,42 @@ export function exportMinutesCsv(rows) {
   const a = document.createElement('a');
   a.href = url; a.download = `minutes-consumed-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
   URL.revokeObjectURL(url);
+}
+
+function downloadCsv(filename, headers, rows) {
+  const csv = [headers, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function exportCourseraCsv(rows) {
+  const headers = ['Course', 'Domain', 'Enrollments', 'Completions', 'Compl. Rate', 'Rating', 'Instructor', 'Instructor Names'];
+  const data = rows.map((c) => [
+    c.name, c.domain || '', c.enrollments ?? '', c.completions ?? '',
+    c.completionRate != null ? (c.completionRate <= 1 ? Math.round(c.completionRate * 100) : Math.round(c.completionRate)) + '%' : '',
+    c.rating ? Number(c.rating).toFixed(2) : '',
+    c.hasStarweaverInstructor ? 'Yes' : 'No',
+    c.instructorNames?.length ? c.instructorNames.join('; ') : '',
+  ]);
+  downloadCsv(`coursera-courses-${new Date().toISOString().slice(0, 10)}.csv`, headers, data);
+}
+
+export function exportFutureLearnCsv(rows) {
+  const headers = ['Course', 'Code', 'Category', 'Status', 'Start Date', 'Wishlist', 'Enrollment'];
+  const data = rows.map((c) => [
+    c.title, c.code || '', c.category || '', c.status || '', c.startDate || '',
+    c.wishlistCount ?? '', c.enrollment ?? '',
+  ]);
+  downloadCsv(`futurelearn-courses-${new Date().toISOString().slice(0, 10)}.csv`, headers, data);
+}
+
+export function exportGo1Csv(rows) {
+  const headers = ['Course', 'Enrolments', 'Completions', 'Total Minutes', 'Avg Session'];
+  const data = rows.map((c) => [
+    c.name, c.enrolments ?? '', c.completions ?? '', c.totalMinutes ?? '', c.avgSessionMinutes ?? '',
+  ]);
+  downloadCsv(`go1-courses-${new Date().toISOString().slice(0, 10)}.csv`, headers, data);
 }

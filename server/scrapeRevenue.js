@@ -37,11 +37,27 @@ page.on('response', (res) => {
   if (m && !shareHolderId) shareHolderId = m[1];
 });
 
-console.log('Opening the revenue page…');
-await page.goto('https://www.udemy.com/instructor/performance/revenue/', { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
-await sleep(5000);
+// Warm up Cloudflare on a normal instructor page first — going straight to
+// /instructor/performance/revenue/ cold sometimes hits Cloudflare's "Performing
+// security verification" challenge page instead of the real dashboard, so no
+// share-holders API call ever fires. This is genuinely non-deterministic
+// (confirmed: identical code succeeded immediately on one run, then hit the
+// challenge on the very next run), so retry rather than fail on the first miss.
+// Also: 'networkidle' can hang indefinitely on this page (observed a full 60s
+// timeout with no response), so use 'domcontentloaded' instead.
+for (let attempt = 1; attempt <= 3 && !shareHolderId; attempt++) {
+  if (attempt > 1) console.log(`Retrying (attempt ${attempt}/3)…`);
+  console.log('Warming up Cloudflare on a normal instructor page…');
+  await page.goto('https://www.udemy.com/instructor/courses/', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+  await sleep(3000);
+
+  console.log('Opening the revenue page…');
+  await page.goto('https://www.udemy.com/instructor/performance/revenue/', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+  await sleep(6000);
+  if (!shareHolderId) await sleep(4000);
+}
 if (!shareHolderId) {
-  console.error('❌ Could not detect your revenue account id. Re-connect and retry.');
+  console.error('❌ Could not detect your revenue account id after 3 attempts. Re-connect and retry.');
   await browser.close();
   process.exit(1);
 }

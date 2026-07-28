@@ -17,6 +17,14 @@ const STEPS = [
   ['Udemy captions', 'scrapeCaptions.js', 'udemy'],
   ['Coursera metrics', 'scrapeCourseraMetrics.js', 'coursera'],
   ['Coursera overview', 'scrapeCourseraOverview.js', 'coursera'],
+  ['Coursera status + reviews', 'scrapeCourseraStatusReviews.js', 'coursera'],
+  ['Coursera CIN courses', 'scrapeCourseraCinCourses.js', 'coursera'],
+  // Slowest step by far (~30-50 min: visits all ~467 CIN course pages
+  // individually — this account has no org-wide analytics dashboard access,
+  // unlike Starweaver, so there's no fast batch source for its enrollment
+  // data). Deliberately last so every faster step still completes even if
+  // this one runs long or gets interrupted.
+  ['Coursera CIN metrics', 'scrapeCourseraCinMetrics.js', 'coursera'],
 ];
 
 // Skip session-based steps if the session file is missing (avoids noisy failures).

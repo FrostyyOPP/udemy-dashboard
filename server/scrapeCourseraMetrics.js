@@ -44,35 +44,54 @@ page.on('response', async (res) => {
   try { const t = await res.text(); if (t.length > 200) bodies.push(t); } catch {}
 });
 
-console.log('Opening the partner analytics dashboard…');
-await page.goto('https://www.coursera.org/admin/starweaver/analytics/monitor', { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
-await sleep(8000);
-// Scroll the Looker frame to trigger lazy-loaded tiles (the course table sits low).
-for (const f of page.frames()) {
-  if (!/looker/.test(f.url())) continue;
-  for (let i = 0; i < 6; i++) { await f.evaluate(() => window.scrollBy(0, 1200)).catch(() => {}); await sleep(1500); }
+// Find the full per-course table among captured querymanager responses: a
+// query whose rows have enrollments + rating + launch date.
+function findTable() {
+  const captured = bodies.join('\n');
+  let best = null;
+  for (const chunk of splitJson(captured)) {
+    let o; try { o = JSON.parse(chunk); } catch { continue; }
+    const rows = o?.data?.data;
+    if (!Array.isArray(rows) || !rows.length) continue;
+    const cols = Object.keys(rows[0]);
+    if (cols.includes(P + 'enrollments_count') && cols.includes(P + 'avg_star_rating') && cols.includes(P + 'course_launch_date_date')) {
+      if (!best || rows.length > best.length) best = rows;
+    }
+  }
+  return best;
 }
-await sleep(4000);
+
+console.log('Opening the partner analytics dashboard…');
+// 'networkidle' can hang indefinitely on this page (observed a full 60s
+// timeout with no load event at all) — use 'domcontentloaded' and poll for
+// the actual data we need instead of a single fixed wait-then-check, which
+// proved unreliable (the course-comparison tile is lazy and Looker's own
+// render time varies — this is the same class of bug fixed for CIN's
+// enrollment scrape, whose fixed sleep had an 11% hit rate before polling).
+await page.goto('https://www.coursera.org/admin/starweaver/analytics/monitor', { waitUntil: 'domcontentloaded', timeout: 40000 }).catch(() => {});
+await sleep(6000);
+
+let best = null;
+const deadline = Date.now() + 90000;
+let scrollRound = 0;
+while (Date.now() < deadline) {
+  best = findTable();
+  if (best) break;
+  for (const f of page.frames()) {
+    if (!/looker/.test(f.url())) continue;
+    await f.evaluate(() => window.scrollBy(0, 1200)).catch(() => {});
+  }
+  scrollRound++;
+  await sleep(2000);
+}
+console.log(`(found after ${scrollRound} scroll round(s))`);
 await browser.close();
 
 if (!bodies.length) { console.error('❌ No dashboard data captured. Re-connect Coursera and retry.'); process.exit(1); }
-
-// Find the full per-course table: a query whose rows have enrollments + rating + launch date.
-const captured = bodies.join('\n');
-let best = null;
-for (const chunk of splitJson(captured)) {
-  let o; try { o = JSON.parse(chunk); } catch { continue; }
-  const rows = o?.data?.data;
-  if (!Array.isArray(rows) || !rows.length) continue;
-  const cols = Object.keys(rows[0]);
-  if (cols.includes(P + 'enrollments_count') && cols.includes(P + 'avg_star_rating') && cols.includes(P + 'course_launch_date_date')) {
-    if (!best || rows.length > best.length) best = rows;
-  }
-}
-if (!best) { console.error('❌ Could not find the per-course table in the dashboard data.'); process.exit(1); }
+if (!best) { console.error('❌ Could not find the per-course table in the dashboard data after 90s of polling.'); process.exit(1); }
 
 const courses = best.map((r) => ({
-  name: val(r, 'course_name'),
+  name: (val(r, 'course_name') || '').trim(),
   domain: val(r, 'course_primary_domain'),
   inSpecialization: val(r, 'is_course_in_specialization') === 'Yes',
   launchDate: val(r, 'course_launch_date_date'),
