@@ -35,3 +35,6 @@ caption-files-*/
 
 # session scratch
 CAPTION-RESUME-NOTE.txt
+
+# Bonus-lecture body backups (course content snapshots — data, not code)
+server/bonus-lecture-backups/
