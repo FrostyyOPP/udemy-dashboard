@@ -9,7 +9,7 @@
 // --- Recommendation pool: slug -> { code, label, desc } -------------------
 // `code` null = the live articles link this course without a referral code.
 export const POOL = {
-  'mastering-prompt-engineering-for-generative-ai-z': { code: null, label: 'Mastering Prompt Engineering for Generative AI', desc: 'The essential skill for anyone working with AI models and ChatGPT.' },
+  'mastering-prompt-engineering-for-generative-ai-z': { code: '2EB376B3A208409D5758', label: 'Mastering Prompt Engineering for Generative AI', desc: 'The essential skill for anyone working with AI models and ChatGPT.' },
   'designing-autonomous-ai-agents': { code: '67E54BCF2351566B7A20', label: 'Build RAG Systems: Generative AI &amp; LangChain Mastery', desc: 'Learn to develop production-ready GenAI applications using RAG architecture.' },
   'genai-ceo-playbook-amplifying-visionary-leadership': { code: '1EA87CDBB6ED39DB7A4C', label: 'GenAI for CEOs: Strategy, Innovation &amp; Competitive Advantage', desc: 'Strategic AI leadership for executives and decision-makers.' },
   'end-to-end-genai-model-engineering': { code: '5A9E95DAE1BCABE0575F', label: 'End-to-End GenAI Model Engineering', desc: 'Cover the complete lifecycle from data to deployment for GenAI systems.' },
@@ -25,10 +25,10 @@ export const POOL = {
 
   'credit-analysis-academy': { code: 'B1DC2332AA0E555FBAAB', label: 'Master Credit Analysis', desc: 'Build end-to-end credit analysis and underwriting skills.' },
   'credit-portfolio-strategy-and-regulatory-compliance': { code: 'E7F559A179A1E3906AA0', label: 'Credit Portfolio Strategy and Regulatory Compliance', desc: 'Manage credit portfolios within evolving regulatory demands.' },
-  'strategic-credit-modeling-and-advanced-financial-diagnostics': { code: null, label: 'Strategic Credit Modeling and Advanced Financial Diagnostics', desc: 'Model credit risk and diagnose financial health with rigour.' },
+  'strategic-credit-modeling-and-advanced-financial-diagnostics': { code: '34E164B4C886D39C2251', label: 'Strategic Credit Modeling and Advanced Financial Diagnostics', desc: 'Model credit risk and diagnose financial health with rigour.' },
   'practical-ai-for-finance-automate-forecast-and-optimize': { code: 'EFA5270BD431547FD860', label: 'AI for Finance: Predictive Analytics &amp; Risk Intelligence', desc: 'Apply AI to forecasting, risk and financial decision-making.' },
   'blockchain-essentials-for-finance-professionals': { code: '19F97CCB267A0DD847C5', label: 'Blockchain Essentials for Finance Professionals', desc: "Understand blockchain technology's impact on financial services." },
-  'personal-investing-for-working-professionals': { code: null, label: 'Personal Investing for Working Professionals', desc: 'Build a practical, long-term personal investing approach.' },
+  'personal-investing-for-working-professionals': { code: 'B0875A00CC805DDD169D', label: 'Personal Investing for Working Professionals', desc: 'Build a practical, long-term personal investing approach.' },
 
   'the-executive-communicator-leading-with-clarity': { code: '6407926B80F85165B8C7', label: 'The Executive Communicator: Leading with Clarity', desc: 'Communicate with authority and influence at senior levels.' },
   'leadership-in-change-management-and-innovation': { code: '7F0BEA0CF71106380238', label: 'Leadership in Change Management and Innovation', desc: 'Lead teams confidently through change and innovation.' },
@@ -62,6 +62,12 @@ export const CLUSTERS = {
   BUSINESS: ['storytelling-with-data-boosting-b2b-b2c-sales','mastering-strategic-sales-leadership','intelligent-business-operations','genai-data-and-analytics-academy','ai-for-product-and-process-optimization','mastering-prompt-engineering-for-generative-ai-z'],
 };
 
+// The student-discount coupon promoted in every bonus lecture. This is a REAL
+// Udemy coupon and it expires — as of 2026-08-05, BESTPRICE runs to 2026-09-05.
+// When it lapses, update this constant and re-run applyBonusDiscountBlock.js,
+// otherwise every lecture advertises a dead code.
+export const DISCOUNT_CODE = 'BESTPRICE';
+
 const JB_SIGNUP = 'https://app.journeybuilder.ai/signup?utm_source=Udemy+Bonus+Section&amp;utm_medium=Udemy_Bonus_section_JBsignup_17%2F02%2F2026&amp;utm_campaign=Udemy_Bonus_section_17%2F02%2F2026_JBsignup_campaign';
 const JB_HOME = 'https://www.journeybuilder.ai/?utm_source=Udemy+Bonus+Section&amp;utm_medium=Udemy_Bonus_section_JB_17%2F02%2F2026&amp;utm_campaign=Udemy_Bonus_section_17%2F02%2F2026_JB_campaign';
 
@@ -81,6 +87,8 @@ const COPY = {
     cta: 'To help reinforce your learning, choose one small project or real-world use case from your work and apply at least 2–3 concepts from this course over the next week. Once you’ve done that, return to leave a course review and share what changed for you. Your feedback supports other learners and helps us improve.',
     recH: 'Recommended Next Courses for You',
     recLead: 'Continue building your expertise with these impactful programs:',
+    discountH: 'Exclusive Student Discount',
+    discountBody: (code) => `Use code <strong>${code}</strong> to access the best price on all our Udemy courses.`,
     pathH: 'Personalised Learning Path',
     pathBody: (link) => `Looking for a more structured way to learn? Try ${link}, Starweaver’s interactive platform designed to create a customised learning path based on your goals, role, and skill level.`,
     bullets: ['Find the right courses quickly','Follow a clear, step-by-step progression','Monitor your progress and develop job-ready skills'],
@@ -95,6 +103,8 @@ const COPY = {
     cta: 'Para reforzar tu aprendizaje, elige un pequeño proyecto o caso de uso real de tu trabajo y aplica al menos 2–3 conceptos de este curso durante la próxima semana. Cuando lo hayas hecho, vuelve para dejar una reseña del curso y compartir qué cambió para ti. Tus comentarios ayudan a otros estudiantes y nos permiten mejorar.',
     recH: 'Próximos cursos recomendados para ti',
     recLead: 'Sigue desarrollando tu experiencia con estos programas de gran impacto (disponibles en inglés):',
+    discountH: 'Descuento exclusivo para estudiantes',
+    discountBody: (code) => `Usa el código <strong>${code}</strong> para acceder al mejor precio en todos nuestros cursos de Udemy.`,
     pathH: 'Ruta de aprendizaje personalizada',
     pathBody: (link) => `¿Buscas una forma más estructurada de aprender? Prueba ${link}, la plataforma interactiva de Starweaver diseñada para crear una ruta de aprendizaje personalizada según tus objetivos, tu rol y tu nivel de conocimientos.`,
     bullets: ['Encuentra rápidamente los cursos adecuados','Sigue una progresión clara, paso a paso','Supervisa tu progreso y desarrolla habilidades listas para el trabajo'],
@@ -138,6 +148,9 @@ export function buildBonusBody(courseName, cluster, lang = 'en') {
     `<p><strong>${c.recH}</strong></p>`,
     `<p><strong>${c.recLead}</strong></p>`,
     recs,
+    BR,
+    `<p><strong>${c.discountH}</strong></p>`,
+    `<p>${c.discountBody(DISCOUNT_CODE)}</p>`,
     BR,
     `<p><strong>${c.pathH}</strong></p>`,
     `<p>${c.pathBody(A(JB_SIGNUP, '<strong>Journeybuilder</strong>'))}</p>`,

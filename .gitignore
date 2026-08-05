@@ -38,3 +38,6 @@ CAPTION-RESUME-NOTE.txt
 
 # Bonus-lecture body backups (course content snapshots — data, not code)
 server/bonus-lecture-backups/
+
+# Coursera enrollment snapshots (data captures, not code)
+server/coursera-enrollment-*.json

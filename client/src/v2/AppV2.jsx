@@ -8,7 +8,7 @@ import ConnectCoursera from '../ConnectCoursera.jsx';
 import ConnectFutureLearn from '../ConnectFutureLearn.jsx';
 import ConnectGo1 from '../ConnectGo1.jsx';
 import { BarChart, Donut, Histogram, LineChart, ChartPlaceholder } from './charts.jsx';
-import { enrich, classifyDomain, DOMAIN_COLOR, capNames, usd, exportCsv, exportMinutesCsv, exportCourseraCsv, exportFutureLearnCsv, exportGo1Csv, applyFilter, parseSmartQuery } from './data.js';
+import { enrich, classifyDomain, DOMAIN_COLOR, capNames, usd, exportCsv, exportMinutesCsv, exportCourseraCsv, exportFutureLearnCsv, exportGo1Csv, exportWatchlistCsv, applyFilter, parseSmartQuery } from './data.js';
 
 const num = (n) => (n == null ? '—' : Math.round(n).toLocaleString());
 const relTime = (iso) => {
@@ -774,6 +774,41 @@ function Watchlist({ bookmarks, udemy, coursera, courseraCin, futurelearn, go1, 
   const go1Rows = byPlatform.go1.map((b) => go1.find((c) => c.name === b.courseKey)).filter(Boolean);
   const total = udemyRows.length + courseraRows.length + courseraCinRows.length + futurelearnRows.length + go1Rows.length;
 
+  // Flatten every platform into one shape for CSV export. Fields a platform
+  // doesn't report are left undefined so they export blank rather than 0.
+  const addedAt = useMemo(() => {
+    const m = new Map();
+    bookmarks.forEach((b) => m.set(`${b.platform}:${b.courseKey}`, (b.addedAt || '').slice(0, 10)));
+    return m;
+  }, [bookmarks]);
+  const when = (platform, key) => addedAt.get(`${platform}:${key}`) ?? '';
+  const rating2 = (r) => (r ? Number(r).toFixed(2) : undefined);
+  const exportRows = [
+    ...udemyRows.map((c) => ({
+      platform: 'Udemy', course: c.title, enrollments: c.num_subscribers, rating: rating2(c.rating),
+      reviews: c.num_reviews, revenue: c.revenue, minutes: c.minutes_taught != null ? Math.round(c.minutes_taught) : undefined,
+      link: c.url ? `https://www.udemy.com${c.url}` : '', addedAt: when('udemy', c.id),
+    })),
+    ...courseraRows.map((c) => ({
+      platform: 'Coursera', course: c.name, status: c.status, enrollments: c.enrollments,
+      rating: rating2(c.rating), completions: c.completions, revenue: c.revenue,
+      link: c.slug ? `https://www.coursera.org/learn/${c.slug}` : '', addedAt: when('coursera', c.slug || c.name),
+    })),
+    ...courseraCinRows.map((c) => ({
+      platform: 'Coursera CIN', course: c.name, status: c.status, enrollments: c.enrollments,
+      rating: rating2(c.rating), completions: c.completions, revenue: c.revenue,
+      link: c.slug ? `https://www.coursera.org/learn/${c.slug}` : '', addedAt: when('coursera_cin', c.slug || c.name),
+    })),
+    ...futurelearnRows.map((c) => ({
+      platform: 'FutureLearn', course: c.title, status: c.status, enrollments: c.enrollment,
+      link: c.slug ? `https://www.futurelearn.com/courses/${c.slug}` : '', addedAt: when('futurelearn', c.slug),
+    })),
+    ...go1Rows.map((c) => ({
+      platform: 'Go1', course: c.name, enrollments: c.enrolments, completions: c.completions,
+      minutes: c.totalMinutes, addedAt: when('go1', c.name),
+    })),
+  ];
+
   if (!bookmarks.length) {
     return (
       <>
@@ -797,7 +832,8 @@ function Watchlist({ bookmarks, udemy, coursera, courseraCin, futurelearn, go1, 
 
   return (
     <>
-      <Header crumb="WATCHLIST" title="Watchlist" sub={`${total} bookmarked course${total === 1 ? '' : 's'} across all platforms`} />
+      <Header crumb="WATCHLIST" title="Watchlist" sub={`${total} bookmarked course${total === 1 ? '' : 's'} across all platforms`}
+        actions={<button className="btn btn-secondary" disabled={!exportRows.length} onClick={() => exportWatchlistCsv(exportRows)}>⬇ Export CSV</button>} />
       {section('Udemy', udemyRows,
         <><th className="no-sort"></th><th style={{ textAlign: 'left' }}>Course</th><th>Rating</th><th>Enrolled</th><th>Reviews</th><th>Revenue</th></>,
         (c) => (

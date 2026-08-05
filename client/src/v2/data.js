@@ -295,3 +295,21 @@ export function exportGo1Csv(rows) {
   ]);
   downloadCsv(`go1-courses-${new Date().toISOString().slice(0, 10)}.csv`, headers, data);
 }
+
+// Watchlist spans every platform, and the platforms don't share a metric set —
+// so this is one flat sheet with a Platform column and a blank wherever a
+// metric doesn't exist for that platform (rather than pretending it's zero).
+// `rows` are the normalised objects built by the Watchlist view.
+export function exportWatchlistCsv(rows) {
+  // Coursera's imported revenue carries full float precision — round money to
+  // 2dp and minutes to whole numbers so the sheet is readable.
+  const money = (v) => (v == null ? '' : Number(v).toFixed(2));
+  const whole = (v) => (v == null ? '' : Math.round(Number(v)));
+  const headers = ['Platform', 'Course', 'Status', 'Enrollments', 'Rating', 'Reviews',
+                   'Completions', 'Revenue', 'Minutes Watched', 'Course Link', 'Bookmarked On'];
+  const data = rows.map((r) => [
+    r.platform, r.course, r.status ?? '', r.enrollments ?? '', r.rating ?? '', r.reviews ?? '',
+    r.completions ?? '', money(r.revenue), whole(r.minutes), r.link ?? '', r.addedAt ?? '',
+  ]);
+  downloadCsv(`watchlist-${new Date().toISOString().slice(0, 10)}.csv`, headers, data);
+}
