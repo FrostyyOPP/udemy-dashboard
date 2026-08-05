@@ -1,59 +1,91 @@
-// One-time/periodic import of real Coursera partner revenue from a manually
-// provided report file (e.g. "ANGUS + ALEX Till 2026 Q1.xlsx"). Coursera's
-// Partner API exposes no revenue data at all — this is the only source, and
-// it only updates when the user supplies a fresh export.
+// Import Coursera partner revenue from one or more "Revenue Share By Product"
+// exports and store LIFETIME totals per course slug. Coursera exposes no
+// revenue via any API, so these manual exports are the only source.
 //
-// The report has one row per (course slug, channel, quarter, business line)
-// combination — a single course can have 20-30+ rows. We sum
-// "Partner Revenue Share Amount" (the partner's actual take, after Coursera's
-// cut) and "Item Completions" per slug across every row, regardless of
-// channel/quarter/business line, to get a lifetime total.
+// The report has one row per (slug, channel, quarter, business line), so a
+// single course can have 20-30+ rows. We sum "Partner Revenue Share Amount"
+// (the partner's take, after Coursera's cut) and "Item Completions" per slug.
 //
-// Slugs in this file span BOTH the Starweaver and CIN course catalogs
-// (confirmed: 120 of 162 known Starweaver slugs and 317 of 467 known CIN
-// slugs matched in the first import) — readCourseraMetrics/readCourseraCinMetrics
-// both merge this table in by slug, so no need to split the import itself.
+// IMPORTANT — pass EVERY source file on every run. Rows are upserted by slug,
+// so importing a single new quarter on its own would overwrite each course's
+// lifetime figure with that quarter alone.
 //
-// Run: node importCourseraRevenue.js "/path/to/report.xlsx"
+// Slugs span both the Starweaver and CIN catalogs; readCourseraMetrics and
+// readCourseraCinMetrics each merge this table in by slug, so the import
+// itself does not need splitting. Coursera's export UI caps at 500 rows —
+// a file with exactly 500 rows is almost certainly truncated, and this script
+// warns when it sees that shape.
+//
+// Run: node importCourseraRevenue.js "file1.xlsx" ["file2.xlsx" ...]
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import xlsx from 'xlsx';
 import { writeCourseraRevenueImport } from './db.js';
 
-const filePath = process.argv[2];
-if (!filePath) {
-  console.error('Usage: node importCourseraRevenue.js "/path/to/report.xlsx"');
+const files = process.argv.slice(2);
+if (!files.length) {
+  console.error('Usage: node importCourseraRevenue.js "<file.xlsx>" ["<file2.xlsx>" ...]');
+  console.error('Pass every export — lifetime totals are rebuilt from scratch on each run.');
   process.exit(1);
 }
 
-const wb = xlsx.read(readFileSync(filePath));
-const sheet = wb.Sheets['Raw'] || wb.Sheets[wb.SheetNames[0]];
-const rows = xlsx.utils.sheet_to_json(sheet, { defval: null });
+// values arrive either as numbers or as "$1,234.56"
+const num = (v) => {
+  if (v == null || v === '') return 0;
+  if (typeof v === 'number') return v;
+  const n = Number(String(v).replace(/[$,\s]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+};
 
 const agg = new Map();
-for (const r of rows) {
-  const slug = (r['Course/Specialization Slug'] || '').toString().trim().toLowerCase();
-  if (!slug) continue;
-  const name = r['Course/Specialization'];
-  const revenue = Number(r['Partner Revenue Share Amount']) || 0;
-  const completions = Number(r['Item Completions']) || 0;
-  const quarter = r['Quarter'];
-  if (!agg.has(slug)) agg.set(slug, { slug, courseName: name, revenue: 0, completions: 0, quarters: new Set() });
-  const a = agg.get(slug);
-  a.revenue += revenue;
-  a.completions += completions;
-  if (quarter) a.quarters.add(quarter);
-  if (name) a.courseName = name; // keep the most recently seen display name
+let grandRows = 0;
+const warnings = [];
+
+for (const filePath of files) {
+  const wb = xlsx.read(readFileSync(filePath));
+  const sheet = wb.Sheets.Raw || wb.Sheets[wb.SheetNames[0]];
+  const rows = xlsx.utils.sheet_to_json(sheet, { defval: null });
+  const label = basename(filePath);
+  const quarters = new Set();
+  let fileRevenue = 0;
+
+  for (const r of rows) {
+    const slug = String(r['Course/Specialization Slug'] || '').trim().toLowerCase();
+    if (!slug) continue;
+    const q = r.Quarter ? String(r.Quarter).trim() : null;
+    if (q && q !== 'None') quarters.add(q);
+    if (!agg.has(slug)) agg.set(slug, { slug, courseName: null, revenue: 0, completions: 0, quarters: new Set() });
+    const a = agg.get(slug);
+    a.revenue += num(r['Partner Revenue Share Amount']);
+    a.completions += num(r['Item Completions']);
+    if (q && q !== 'None') a.quarters.add(q);
+    if (r['Course/Specialization']) a.courseName = r['Course/Specialization'];
+    fileRevenue += num(r['Partner Revenue Share Amount']);
+    grandRows++;
+  }
+
+  const qs = [...quarters].sort();
+  console.log(label);
+  console.log(`   ${rows.length} rows · ${qs.length ? `${qs[0]} → ${qs[qs.length - 1]} (${qs.length}q)` : 'no quarter column'} · $${fileRevenue.toLocaleString(undefined, { maximumFractionDigits: 2 })}`);
+  if (rows.length === 500) {
+    const w = `${label} has exactly 500 rows — Coursera caps this export at 500, so it is very likely TRUNCATED (revenue understated).`;
+    warnings.push(w);
+    console.warn(`   ⚠️  ${w}`);
+  }
 }
 
 const imported = [...agg.values()].map((a) => ({
-  slug: a.slug, courseName: a.courseName, revenue: a.revenue, completions: a.completions, quarterCount: a.quarters.size,
+  slug: a.slug, courseName: a.courseName, revenue: a.revenue,
+  completions: a.completions, quarterCount: a.quarters.size,
 }));
+const total = imported.reduce((s, r) => s + r.revenue, 0);
+const allQuarters = [...new Set([...agg.values()].flatMap((a) => [...a.quarters]))].sort();
 
-const result = writeCourseraRevenueImport(imported, basename(filePath));
-const totalRevenue = imported.reduce((s, r) => s + r.revenue, 0);
-console.log(`✅ Imported revenue for ${result.written} courses · $${totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 2 })} total → dashboard.db`);
+const result = writeCourseraRevenueImport(imported, files.map((f) => basename(f)).join(' + '));
+console.log(`\n✅ ${result.written} courses · ${grandRows} source rows · $${total.toLocaleString(undefined, { maximumFractionDigits: 2 })} lifetime partner revenue`);
+console.log(`   coverage: ${allQuarters[0]} → ${allQuarters[allQuarters.length - 1]}  (${allQuarters.length} quarters)`);
 console.log('   Top 5 by revenue:');
 for (const r of [...imported].sort((a, b) => b.revenue - a.revenue).slice(0, 5)) {
   console.log(`   $${r.revenue.toFixed(2)} — ${r.courseName} (${r.slug})`);
 }
+if (warnings.length) { console.log('\n⚠️  warnings:'); warnings.forEach((w) => console.log(`   - ${w}`)); }
