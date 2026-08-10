@@ -117,8 +117,11 @@ export default function AppV2() {
           {view === 'overview' && <Overview udemy={udemy} coursera={coursera} courseraCin={courseraCin} futurelearn={futurelearn} go1={go1.courses} go1Lifetime={go1Lifetime} totalRevenue={totalRevenue} platform={platform} monthly={monthly} engagement={engagement} />}
           {view === 'watchlist' && <Watchlist bookmarks={bookmarks} udemy={udemy} coursera={coursera} courseraCin={courseraCin} futurelearn={futurelearn} go1={go1Lifetime.courses.length ? go1Lifetime.courses : go1.courses} isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} onOpen={setSelected} />}
           {view === 'courses' && (
-            platform === 'coursera' ? <CourseraView rows={coursera} reviewsBySlug={courseraReviews} isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} />
-            : platform === 'coursera_cin' ? <CourseraView rows={courseraCin} label="Coursera CIN" showInstructorCheck={false} reviewsBySlug={courseraCinReviews} platform="coursera_cin" isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} />
+            /* key by platform — both tabs render CourseraView, and without a
+               distinct key React reuses the instance and carries the search
+               term and sort over to the other catalog. */
+            platform === 'coursera' ? <CourseraView key="coursera" rows={coursera} reviewsBySlug={courseraReviews} isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} />
+            : platform === 'coursera_cin' ? <CourseraView key="coursera_cin" rows={courseraCin} label="Coursera CIN" showInstructorCheck={false} reviewsBySlug={courseraCinReviews} platform="coursera_cin" isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} />
             : platform === 'futurelearn' ? <FutureLearnView rows={futurelearn} isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} />
             : platform === 'go1' ? <Go1View rows={go1.courses} month={go1.month} lifetime={go1Lifetime} isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} />
             : <Courses udemy={udemy} totalRevenue={totalRevenue} onOpen={setSelected} onRefresh={load} isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} />
@@ -586,11 +589,19 @@ function StatusBadge({ status }) {
 
 function CourseraView({ rows, label = 'Coursera', showInstructorCheck = true, reviewsBySlug = {}, platform = 'coursera', isBookmarked, toggleBookmark }) {
   const [sort, setSort] = useState({ key: 'enrollments', dir: -1 });
+  const [q, setQ] = useState('');
   const pct = (r) => (r == null ? '—' : (r <= 1 ? Math.round(r * 100) : Math.round(r)) + '%');
-  const data = useMemo(() => [...rows].sort((a, b) => {
+  // search across the fields actually shown in the table, so a hit is visible
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return rows;
+    return rows.filter((c) => [c.name, c.domain, c.status, ...(c.instructorNames || [])]
+      .some((v) => String(v || '').toLowerCase().includes(s)));
+  }, [rows, q]);
+  const data = useMemo(() => [...filtered].sort((a, b) => {
     if (STR_SORT_KEYS.has(sort.key)) return sort.dir * String(a[sort.key] || '').localeCompare(String(b[sort.key] || ''));
     return sort.dir * ((Number(a[sort.key]) || 0) - (Number(b[sort.key]) || 0));
-  }), [rows, sort]);
+  }), [filtered, sort]);
   if (!rows.length) return (<><Header crumb={`COURSES · ${label.toUpperCase()}`} title={label} sub="Partner course metrics" /><div className="table-card"><div style={{ padding: 24 }} className="muted">No {label} metrics cached. Reconnect Coursera in Settings, then run the metrics scrape.</div></div></>);
   const totE = rows.reduce((s, c) => s + (c.enrollments || 0), 0);
   const totC = rows.reduce((s, c) => s + (c.completions || 0), 0);
@@ -609,7 +620,13 @@ function CourseraView({ rows, label = 'Coursera', showInstructorCheck = true, re
         <Kpi icon="⭐" bg="#fef3c7" fg="#f59e0b" label="Avg Rating" value={avgR ? avgR.toFixed(2) : '—'} />
         {withRevenue.length > 0 && <Kpi icon="💵" bg="#dcfce7" fg="#10b981" label="Revenue" value={usd(totRev)} trend={`${withRevenue.length}/${rows.length} courses — imported report`} />}
       </div>
-      <div className="table-card"><div className="table-scroll"><table>
+      <div className="table-card">
+        <div className="table-header">
+          <input className="table-search" placeholder="Search course, domain, status or instructor…" value={q}
+            onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setQ(''); }} />
+          <span className="muted">{data.length === rows.length ? `${rows.length} courses` : `${data.length} of ${rows.length}`}</span>
+        </div>
+        <div className="table-scroll"><table>
         <thead><tr><th className="no-sort"></th>{th('name', 'Course', 'left')}{th('domain', 'Domain', 'left')}{th('status', 'Status', 'center')}{th('enrollments', 'Enrollments')}{th('completions', 'Completions')}{th('completionRate', 'Compl. Rate')}{th('rating', 'Rating')}<th className="no-sort">Reviews</th>{th('revenue', 'Revenue')}{showInstructorCheck && <th className="no-sort">Instructor</th>}{showInstructorCheck && th('instructorNames', 'Instructor Names', 'left')}</tr></thead>
         <tbody>
           {data.map((c, i) => {
@@ -645,7 +662,9 @@ function FutureLearnView({ rows, isBookmarked, toggleBookmark }) {
   const [q, setQ] = useState('');
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return s ? rows.filter((c) => (c.title || '').toLowerCase().includes(s)) : rows;
+    if (!s) return rows;
+    return rows.filter((c) => [c.title, c.code, c.category, c.status]
+      .some((v) => String(v || '').toLowerCase().includes(s)));
   }, [rows, q]);
   const data = useMemo(() => [...filtered].sort((a, b) => {
     const av = a[sort.key], bv = b[sort.key];
@@ -666,8 +685,9 @@ function FutureLearnView({ rows, isBookmarked, toggleBookmark }) {
       </div>
       <div className="table-card">
         <div className="table-header">
-          <input className="table-search" placeholder="Search courses…" value={q} onChange={(e) => setQ(e.target.value)} />
-          <span className="muted">{data.length} shown</span>
+          <input className="table-search" placeholder="Search course, code, category or status…" value={q}
+            onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setQ(''); }} />
+          <span className="muted">{data.length === rows.length ? `${rows.length} courses` : `${data.length} of ${rows.length}`}</span>
         </div>
         <div className="table-scroll"><table>
           <thead><tr><th className="no-sort"></th>{th('title', 'Course', 'left')}{th('code', 'Code', 'left')}{th('category', 'Category', 'left')}{th('status', 'Status')}<th className="no-sort">Start date</th>{th('wishlistCount', 'Wishlist')}{th('enrollment', 'Enrollment')}</tr></thead>
@@ -699,7 +719,12 @@ function FutureLearnView({ rows, isBookmarked, toggleBookmark }) {
 function Go1View({ rows, month, lifetime, isBookmarked, toggleBookmark }) {
   const [scope, setScope] = useState('lifetime');
   const [sort, setSort] = useState({ key: 'enrolments', dir: -1 });
-  const activeRows = scope === 'lifetime' ? lifetime.courses : rows;
+  const [q, setQ] = useState('');
+  const allRows = scope === 'lifetime' ? lifetime.courses : rows;
+  const activeRows = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return s ? allRows.filter((c) => String(c.name || '').toLowerCase().includes(s)) : allRows;
+  }, [allRows, q]);
   const data = useMemo(() => [...activeRows].sort((a, b) => {
     if (STR_SORT_KEYS.has(sort.key)) return sort.dir * String(a[sort.key] || '').localeCompare(String(b[sort.key] || ''));
     return sort.dir * ((Number(a[sort.key]) || 0) - (Number(b[sort.key]) || 0));
@@ -712,8 +737,10 @@ function Go1View({ rows, month, lifetime, isBookmarked, toggleBookmark }) {
       </div></div>
     </>
   );
-  const totE = activeRows.reduce((s, c) => s + (c.enrolments || 0), 0);
-  const totC = activeRows.reduce((s, c) => s + (c.completions || 0), 0);
+  // KPIs describe the whole scope, not the search result — otherwise the
+  // headline totals would silently change as you type.
+  const totE = allRows.reduce((s, c) => s + (c.enrolments || 0), 0);
+  const totC = allRows.reduce((s, c) => s + (c.completions || 0), 0);
   const isLifetime = scope === 'lifetime';
   const scopeBtn = (key, label) => (
     <button
@@ -736,11 +763,17 @@ function Go1View({ rows, month, lifetime, isBookmarked, toggleBookmark }) {
         </div>}
       />
       <div className="kpi-grid">
-        <Kpi icon="📚" bg="#cce5ff" fg="#0066cc" label="Courses" value={num(activeRows.length)} />
+        <Kpi icon="📚" bg="#cce5ff" fg="#0066cc" label="Courses" value={num(allRows.length)} />
         <Kpi icon="👥" bg="#cce5ff" fg="#0066cc" label={isLifetime ? 'Enrolments (lifetime)' : 'Enrolments (month)'} value={num(totE)} />
         <Kpi icon="🎓" bg="#dcfce7" fg="#10b981" label={isLifetime ? 'Completions (lifetime)' : 'Completions (month)'} value={num(totC)} />
       </div>
-      <div className="table-card"><div className="table-scroll"><table>
+      <div className="table-card">
+        <div className="table-header">
+          <input className="table-search" placeholder="Search courses…" value={q}
+            onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setQ(''); }} />
+          <span className="muted">{data.length === allRows.length ? `${allRows.length} courses` : `${data.length} of ${allRows.length}`}</span>
+        </div>
+        <div className="table-scroll"><table>
         <thead><tr><th className="no-sort"></th>{th('name', 'Course', 'left')}{th('enrolments', 'Enrolments')}{th('completions', 'Completions')}{th('totalMinutes', 'Total minutes')}{th('avgSessionMinutes', 'Avg session')}</tr></thead>
         <tbody>
           {data.map((c, i) => (

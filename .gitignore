@@ -41,3 +41,9 @@ server/bonus-lecture-backups/
 
 # Coursera enrollment snapshots (data captures, not code)
 server/coursera-enrollment-*.json
+
+# Data exports (revenue reports, DB dumps, course lists) — CONFIDENTIAL.
+# This repo is public; importCourseraRevenue.js archives source exports into
+# exports/coursera-revenue/, so this must stay ignored.
+exports/
+server/data.db

@@ -17,10 +17,30 @@
 // warns when it sees that shape.
 //
 // Run: node importCourseraRevenue.js "file1.xlsx" ["file2.xlsx" ...]
-import { readFileSync } from 'node:fs';
-import { basename } from 'node:path';
+import { readFileSync, copyFileSync, mkdirSync, existsSync } from 'node:fs';
+import { basename, join, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import xlsx from 'xlsx';
 import { writeCourseraRevenueImport } from './db.js';
+
+// Only lifetime totals reach the database, so the quarter breakdown lives
+// nowhere but these source files. Archive a copy on import — a set of exports
+// read straight out of ~/Downloads was later deleted, and with it the only
+// per-quarter record we had.
+const ARCHIVE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'exports', 'coursera-revenue');
+function archive(filePath) {
+  try {
+    mkdirSync(ARCHIVE_DIR, { recursive: true });
+    const dest = join(ARCHIVE_DIR, basename(filePath));
+    if (resolve(filePath) === resolve(dest)) return null;
+    if (existsSync(dest)) return `${basename(filePath)} (already archived)`;
+    copyFileSync(filePath, dest);
+    return basename(filePath);
+  } catch (e) {
+    console.warn(`   ⚠️  could not archive ${basename(filePath)}: ${e.message}`);
+    return null;
+  }
+}
 
 const files = process.argv.slice(2);
 if (!files.length) {
@@ -80,6 +100,9 @@ const imported = [...agg.values()].map((a) => ({
 }));
 const total = imported.reduce((s, r) => s + r.revenue, 0);
 const allQuarters = [...new Set([...agg.values()].flatMap((a) => [...a.quarters]))].sort();
+
+const archived = files.map(archive).filter(Boolean);
+if (archived.length) console.log(`\n📦 archived to exports/coursera-revenue/: ${archived.join(', ')}`);
 
 const result = writeCourseraRevenueImport(imported, files.map((f) => basename(f)).join(' + '));
 console.log(`\n✅ ${result.written} courses · ${grandRows} source rows · $${total.toLocaleString(undefined, { maximumFractionDigits: 2 })} lifetime partner revenue`);
