@@ -40,6 +40,7 @@ const NAV = [['overview', 'Overview'], ['watchlist', 'Watchlist'], ['courses', '
 export default function AppV2() {
   const [raw, setRaw] = useState(null);
   const [coursera, setCoursera] = useState([]);
+  const [courseraQuarters, setCourseraQuarters] = useState([]);
   const [courseraCin, setCourseraCin] = useState([]);
   const [courseraReviews, setCourseraReviews] = useState({});
   const [courseraCinReviews, setCourseraCinReviews] = useState({});
@@ -71,7 +72,10 @@ export default function AppV2() {
     fetch('/api/connection').then((r) => r.json()).then(setConn).catch(() => {});
     fetch('/api/last-update').then((r) => r.json()).then((d) => setLastUpdate(d.updatedAt)).catch(() => {});
     loadBookmarks();
-    fetch('/api/coursera/metrics').then((r) => r.json()).then((d) => setCoursera(d.courses || d.results || [])).catch(() => {});
+    fetch('/api/coursera/metrics').then((r) => r.json()).then((d) => {
+      setCoursera(d.courses || d.results || []);
+      setCourseraQuarters(d.revenueQuarters || []);
+    }).catch(() => {});
     fetch('/api/coursera-cin/metrics').then((r) => r.json()).then((d) => setCourseraCin(d.courses || d.results || [])).catch(() => {});
     fetch('/api/coursera/reviews').then((r) => r.json()).then((d) => setCourseraReviews(d.bySlug || {})).catch(() => {});
     fetch('/api/coursera-cin/reviews').then((r) => r.json()).then((d) => setCourseraCinReviews(d.bySlug || {})).catch(() => {});
@@ -120,7 +124,7 @@ export default function AppV2() {
             /* key by platform — both tabs render CourseraView, and without a
                distinct key React reuses the instance and carries the search
                term and sort over to the other catalog. */
-            platform === 'coursera' ? <CourseraView key="coursera" rows={coursera} reviewsBySlug={courseraReviews} isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} />
+            platform === 'coursera' ? <CourseraView key="coursera" rows={coursera} quarters={courseraQuarters} reviewsBySlug={courseraReviews} isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} />
             : platform === 'coursera_cin' ? <CourseraView key="coursera_cin" rows={courseraCin} label="Coursera CIN" showInstructorCheck={false} reviewsBySlug={courseraCinReviews} platform="coursera_cin" isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} />
             : platform === 'futurelearn' ? <FutureLearnView rows={futurelearn} isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} />
             : platform === 'go1' ? <Go1View rows={go1.courses} month={go1.month} lifetime={go1Lifetime} isBookmarked={isBookmarked} toggleBookmark={toggleBookmark} />
@@ -587,7 +591,7 @@ function StatusBadge({ status }) {
   return <span className="pill" style={{ background: s.bg, color: s.fg }}>{s.text}</span>;
 }
 
-function CourseraView({ rows, label = 'Coursera', showInstructorCheck = true, reviewsBySlug = {}, platform = 'coursera', isBookmarked, toggleBookmark }) {
+function CourseraView({ rows, label = 'Coursera', showInstructorCheck = true, reviewsBySlug = {}, platform = 'coursera', isBookmarked, toggleBookmark, quarters = [] }) {
   const [sort, setSort] = useState({ key: 'enrollments', dir: -1 });
   const [q, setQ] = useState('');
   const pct = (r) => (r == null ? '—' : (r <= 1 ? Math.round(r * 100) : Math.round(r)) + '%');
@@ -598,9 +602,12 @@ function CourseraView({ rows, label = 'Coursera', showInstructorCheck = true, re
     return rows.filter((c) => [c.name, c.domain, c.status, ...(c.instructorNames || [])]
       .some((v) => String(v || '').toLowerCase().includes(s)));
   }, [rows, q]);
+  // Quarter columns sort on `q<index>`, which lives inside the quarterlyRevenue
+  // array rather than being a field of its own.
+  const val = (c, key) => (/^q\d+$/.test(key) ? c.quarterlyRevenue?.[Number(key.slice(1))] : c[key]);
   const data = useMemo(() => [...filtered].sort((a, b) => {
     if (STR_SORT_KEYS.has(sort.key)) return sort.dir * String(a[sort.key] || '').localeCompare(String(b[sort.key] || ''));
-    return sort.dir * ((Number(a[sort.key]) || 0) - (Number(b[sort.key]) || 0));
+    return sort.dir * ((Number(val(a, sort.key)) || 0) - (Number(val(b, sort.key)) || 0));
   }), [filtered, sort]);
   if (!rows.length) return (<><Header crumb={`COURSES · ${label.toUpperCase()}`} title={label} sub="Partner course metrics" /><div className="table-card"><div style={{ padding: 24 }} className="muted">No {label} metrics cached. Reconnect Coursera in Settings, then run the metrics scrape.</div></div></>);
   const totE = rows.reduce((s, c) => s + (c.enrollments || 0), 0);
@@ -627,7 +634,7 @@ function CourseraView({ rows, label = 'Coursera', showInstructorCheck = true, re
           <span className="muted">{data.length === rows.length ? `${rows.length} courses` : `${data.length} of ${rows.length}`}</span>
         </div>
         <div className="table-scroll"><table>
-        <thead><tr><th className="no-sort"></th>{th('name', 'Course', 'left')}{th('domain', 'Domain', 'left')}{th('status', 'Status', 'center')}{th('enrollments', 'Enrollments')}{th('completions', 'Completions')}{th('completionRate', 'Compl. Rate')}{th('rating', 'Rating')}<th className="no-sort">Reviews</th>{th('revenue', 'Revenue')}{showInstructorCheck && <th className="no-sort">Instructor</th>}{showInstructorCheck && th('instructorNames', 'Instructor Names', 'left')}</tr></thead>
+        <thead><tr><th className="no-sort"></th>{th('name', 'Course', 'left')}{th('domain', 'Domain', 'left')}{th('status', 'Status', 'center')}{th('enrollments', 'Enrollments')}{th('completions', 'Completions')}{th('completionRate', 'Compl. Rate')}{th('rating', 'Rating')}<th className="no-sort">Reviews</th>{th('revenue', 'Revenue')}{quarters.map((qt, qi) => <th key={qt} style={{ textAlign: 'right' }} onClick={() => setSort((s) => ({ key: `q${qi}`, dir: s.key === `q${qi}` ? -s.dir : -1 }))}>{qt}{sort.key === `q${qi}` ? (sort.dir < 0 ? ' \u2193' : ' \u2191') : ''}</th>)}{showInstructorCheck && <th className="no-sort">Instructor</th>}{showInstructorCheck && th('instructorNames', 'Instructor Names', 'left')}</tr></thead>
         <tbody>
           {data.map((c, i) => {
             const reviews = (c.slug && reviewsBySlug[c.slug]) || [];
@@ -645,6 +652,10 @@ function CourseraView({ rows, label = 'Coursera', showInstructorCheck = true, re
               <td style={{ textAlign: 'right' }}>{c.rating ? <span className="rating-stars">★ {Number(c.rating).toFixed(2)}</span> : '—'}</td>
               <td style={{ textAlign: 'center' }} title={reviewTitle || undefined}>{reviews.length ? <span className="pill" style={{ background: '#eef2ff', color: '#4f46e5', cursor: 'help' }}>{reviews.length}</span> : <span className="muted">0</span>}</td>
               <td style={{ textAlign: 'right', fontWeight: 600, color: c.revenue ? '#10b981' : '#9ca3af' }}>{c.revenue != null ? usd(c.revenue) : '—'}</td>
+              {quarters.map((qt, qi) => {
+                const v = c.quarterlyRevenue?.[qi];
+                return <td key={qt} style={{ textAlign: 'right', color: v ? '#374151' : '#9ca3af' }}>{v != null ? usd(v) : '—'}</td>;
+              })}
               {showInstructorCheck && <td style={{ textAlign: 'center' }}>{c.hasStarweaverInstructor ? <span title="instructors@starweaver.com is an Instructor" style={{ color: '#10b981' }}>✓</span> : <span title="instructors@starweaver.com not found as Instructor" style={{ color: '#ef4444' }}>✗</span>}</td>}
               {showInstructorCheck && <td className="muted" style={{ fontSize: 13 }}>{c.instructorNames?.length ? c.instructorNames.join(', ') : '—'}</td>}
             </tr>

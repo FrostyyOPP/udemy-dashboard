@@ -142,6 +142,34 @@ db.exec(`
     imported_at TEXT NOT NULL
   );
 
+  -- Same revenue reports, but kept PER QUARTER instead of collapsed to a
+  -- lifetime total. The table above cannot answer "what did this course earn
+  -- last quarter" — and because the source exports live wherever they were
+  -- downloaded, a deleted file used to mean the quarter split was gone for
+  -- good. This is the durable copy.
+  --
+  -- Keyed by (catalog, course_key, quarter). course_key is the slug when the
+  -- export provides one and a normalised course name when it does not (the
+  -- historical "ALL Coursera Data" report has no slug column). catalog is
+  -- 'starweaver' or 'cin'. product_type separates course revenue from
+  -- specialization/bundle revenue, which must not be attributed to a course.
+  CREATE TABLE IF NOT EXISTS coursera_revenue_quarterly (
+    catalog TEXT NOT NULL,
+    course_key TEXT NOT NULL,
+    quarter TEXT NOT NULL,
+    product_type TEXT NOT NULL DEFAULT 'course',
+    course_name TEXT,
+    slug TEXT,
+    revenue REAL NOT NULL DEFAULT 0,
+    net_sales REAL,
+    completions INTEGER,
+    source_file TEXT,
+    imported_at TEXT NOT NULL,
+    PRIMARY KEY (catalog, course_key, quarter, product_type)
+  );
+  CREATE INDEX IF NOT EXISTS idx_crq_quarter ON coursera_revenue_quarterly (quarter);
+  CREATE INDEX IF NOT EXISTS idx_crq_slug ON coursera_revenue_quarterly (slug);
+
   -- A handful of real learner reviews per course (text + rating), separate
   -- from the aggregate rating column in coursera_metrics since it's one-to-many.
   -- Fetched via Coursera's feedback.v1 API, keyed by slug (needs
@@ -778,6 +806,82 @@ export function readCourseraRevenueImport() {
   return { bySlug, importedAt, totalRevenue: rows.reduce((s, r) => s + (r.revenue || 0), 0) };
 }
 
+// --- Coursera revenue per quarter (manual import — see table comment) -----
+// Upsert-merge, never a wholesale replace: each import usually covers only the
+// quarters in the files passed, and wiping the table would throw away every
+// earlier quarter whose source file is long gone.
+const upsertCourseraRevenueQuarterStmt = db.prepare(
+  `INSERT INTO coursera_revenue_quarterly
+     (catalog, course_key, quarter, product_type, course_name, slug, revenue, net_sales, completions, source_file, imported_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+   ON CONFLICT(catalog, course_key, quarter, product_type) DO UPDATE SET
+     course_name = COALESCE(excluded.course_name, course_name),
+     slug = COALESCE(excluded.slug, slug),
+     revenue = excluded.revenue,
+     net_sales = COALESCE(excluded.net_sales, net_sales),
+     completions = COALESCE(excluded.completions, completions),
+     source_file = excluded.source_file,
+     imported_at = excluded.imported_at`
+);
+export function writeCourseraRevenueQuarterly(rows, sourceFile) {
+  const ts = nowIso();
+  const startedAt = ts;
+  if (!rows.length) {
+    recordRun({ job: 'coursera_revenue_quarterly', startedAt, ok: false, guarded: true, rowCount: 0, error: 'refused: no rows' });
+    return { ok: false, guarded: true, written: 0 };
+  }
+  const before = tableCount('coursera_revenue_quarterly');
+  const tx = db.transaction(() => {
+    for (const r of rows) {
+      upsertCourseraRevenueQuarterStmt.run(
+        r.catalog, r.courseKey, r.quarter, r.productType || 'course',
+        r.courseName ?? null, r.slug ?? null, r.revenue ?? 0,
+        r.netSales ?? null, r.completions ?? null, sourceFile, ts
+      );
+    }
+  });
+  tx();
+  const after = tableCount('coursera_revenue_quarterly');
+  recordRun({ job: 'coursera_revenue_quarterly', startedAt, ok: true, rowCount: rows.length });
+  return { ok: true, written: rows.length, before, after };
+}
+
+// Returns { bySlug: { slug: { '2026 Q2': 123.45, ... } }, quarters: [...] } for
+// course-type rows only — specialization revenue is a separate product and must
+// not be folded into a course's figures.
+export function readCourseraRevenueQuarterly({ catalog = 'starweaver', quarters = null } = {}) {
+  let sql = `SELECT slug, course_key, course_name, quarter, revenue, net_sales
+             FROM coursera_revenue_quarterly
+             WHERE catalog = ? AND product_type = 'course'`;
+  const params = [catalog];
+  if (quarters?.length) {
+    sql += ` AND quarter IN (${quarters.map(() => '?').join(',')})`;
+    params.push(...quarters);
+  }
+  const rows = db.prepare(sql).all(...params);
+  const importedAt = db.prepare('SELECT MAX(imported_at) AS t FROM coursera_revenue_quarterly').get().t;
+  const bySlug = {};
+  const byName = {};
+  const seen = new Set();
+  for (const r of rows) {
+    seen.add(r.quarter);
+    const bucket = (obj, key) => { if (!key) return; (obj[key] ||= {})[r.quarter] = r.revenue; };
+    bucket(bySlug, r.slug);
+    bucket(byName, (r.course_name || '').trim().toLowerCase());
+  }
+  return { bySlug, byName, quarters: [...seen].sort(), importedAt };
+}
+
+// Every quarter on record with its portfolio total — cheap enough to compute on
+// demand and it's what the Earnings view needs.
+export function readCourseraQuarterTotals(catalog = 'starweaver') {
+  return db.prepare(
+    `SELECT quarter, product_type, SUM(revenue) AS revenue, COUNT(*) AS rows
+     FROM coursera_revenue_quarterly WHERE catalog = ?
+     GROUP BY quarter, product_type ORDER BY quarter`
+  ).all(catalog);
+}
+
 // --- Coursera reviews (guarded snapshot — SW) ------------------------------
 const insertCourseraReviewStmt = db.prepare(
   `INSERT INTO coursera_reviews (slug, course_name, rating, review_text, reviewer_name, review_date, updated_at)
@@ -1043,12 +1147,16 @@ const ALL_TABLES = [
   'enrollment', 'revenue_course', 'revenue_monthly', 'revenue_meta', 'captions',
   'coupons', 'coupon_quota', 'udemy_real_course_ids', 'transcripts', 'coursera_courses', 'coursera_metrics', 'coursera_overview_kpis', 'coursera_course_instructors',
   'coursera_course_status', 'coursera_reviews', 'coursera_cin_reviews', 'coursera_revenue_import',
+  'coursera_revenue_quarterly',
   'coursera_cin_courses', 'coursera_cin_metrics', 'coursera_cin_overview_kpis',
   'futurelearn_courses', 'go1_courses', 'go1_course_history', 'engagement_course', 'engagement_monthly', 'engagement_meta', 'engagement_ub_monthly',
   'engagement_course_monthly',
 ];
 // Most scrape tables stamp `updated_at`; a few use a different column name.
-const TIMESTAMP_COLUMN_OVERRIDES = { coursera_revenue_import: 'imported_at' };
+const TIMESTAMP_COLUMN_OVERRIDES = {
+  coursera_revenue_import: 'imported_at',
+  coursera_revenue_quarterly: 'imported_at',
+};
 export function latestUpdatedAt() {
   let newest = null;
   for (const t of ALL_TABLES) {

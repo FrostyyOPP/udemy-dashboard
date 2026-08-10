@@ -12,6 +12,7 @@ import {
   readEnrollment, readRevenue, readCaptions, readCoupons, readCouponQuota, readUdemyRealCourseIds, readTranscripts, setTranscript,
   readCourseraCourses, readCourseraMetrics, readCourseraOverview, readCourseraCourseInstructors, latestUpdatedAt,
   readCourseraCourseStatus, readCourseraReviews, readCourseraCinReviews, readCourseraRevenueImport,
+  readCourseraRevenueQuarterly, readCourseraQuarterTotals,
   readBookmarks, addBookmark, removeBookmark,
   readCourseraCinCourses, readCourseraCinMetrics, readCourseraCinOverview,
   readFutureLearnCourses, readGo1Courses, readGo1Lifetime, readEngagement,
@@ -232,25 +233,46 @@ app.get('/api/coursera/metrics', (req, res) => {
   const { byName: instructorByName } = readCourseraCourseInstructors();
   const { byName: statusByName } = readCourseraCourseStatus();
   const { bySlug: revenueBySlug } = readCourseraRevenueImport();
+  // Per-quarter revenue is keyed by slug where the export had one and by course
+  // name where it didn't (the historical roll-up has no slug column), so look
+  // up both. Only the most recent quarters are sent — the table holds every
+  // quarter back to 2023 Q3 and the courses grid only shows the recent ones.
+  const { bySlug: qBySlug, byName: qByName, quarters: allQuarters } = readCourseraRevenueQuarterly({ catalog: 'starweaver' });
+  const recentQuarters = allQuarters.slice(-3);
   const normalizedInstructors = {};
   for (const [name, v] of Object.entries(instructorByName)) normalizedInstructors[normalizeName(name)] = v;
   const normalizedStatus = {};
   for (const [name, v] of Object.entries(statusByName)) normalizedStatus[normalizeName(name)] = v;
   res.json({
     ...metrics,
+    revenueQuarters: recentQuarters,
     courses: metrics.courses.map((c) => {
       const info = normalizedInstructors[normalizeName(c.name)];
       const statusInfo = normalizedStatus[normalizeName(c.name)];
       const slug = statusInfo?.slug || null;
       const revInfo = slug ? revenueBySlug[slug] : null;
+      const q = { ...(qByName[(c.name || '').trim().toLowerCase()] || {}), ...(slug ? qBySlug[slug] || {} : {}) };
+      const quarterlyRevenue = recentQuarters.map((qt) => (qt in q ? q[qt] : null));
       return {
         ...c,
         hasStarweaverInstructor: !!info?.hasStarweaverInstructor, instructorNames: info?.instructorNames || [],
         slug, status: statusInfo?.status || null,
         revenue: revInfo?.revenue ?? null, revenueCompletions: revInfo?.completions ?? null,
+        quarterlyRevenue,
+        quarterlyRevenueTotal: quarterlyRevenue.some((v) => v != null)
+          ? quarterlyRevenue.reduce((s, v) => s + (v || 0), 0) : null,
       };
     }),
   });
+});
+
+// Every quarter on record, course and specialization totals split out. Backs
+// the Earnings view and is the durable answer to "revenue for the last N
+// quarters" that the lifetime-only import table could never give.
+app.get('/api/coursera/revenue-quarterly', (req, res) => {
+  const catalog = req.query.catalog === 'cin' ? 'cin' : 'starweaver';
+  const { bySlug, byName, quarters, importedAt } = readCourseraRevenueQuarterly({ catalog });
+  res.json({ catalog, quarters, importedAt, totals: readCourseraQuarterTotals(catalog), bySlug, byName });
 });
 
 // Real learner review text (not just the aggregate rating) — Starweaver.
