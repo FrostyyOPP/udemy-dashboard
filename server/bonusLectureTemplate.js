@@ -116,12 +116,28 @@ const COPY = {
 };
 
 /**
+ * The label shown for a recommended course.
+ *
+ * POOL.label is a title captured when these articles were first authored, and
+ * Udemy titles change — by 2026-08 only 4 of the 33 still matched. So prefer
+ * the live title whenever the caller supplies a catalogue, and fall back to the
+ * stored label only for a slug the catalogue does not know. Live titles are raw
+ * text and must be escaped; POOL labels are already escaped.
+ */
+export function labelFor(slug, titlesBySlug) {
+  const live = titlesBySlug?.[slug];
+  return live ? esc(live) : POOL[slug].label;
+}
+
+/**
  * Build the bonus-lecture article HTML.
  * @param {string} courseName exact course title (used verbatim in the thank-you line)
  * @param {string} cluster    key of CLUSTERS
  * @param {'en'|'es'} lang
+ * @param {{titlesBySlug?: Record<string,string>}} [opts] live Udemy titles keyed
+ *        by published_title slug; without it the stored POOL labels are used.
  */
-export function buildBonusBody(courseName, cluster, lang = 'en') {
+export function buildBonusBody(courseName, cluster, lang = 'en', opts = {}) {
   const c = COPY[lang];
   const slugs = CLUSTERS[cluster];
   if (!slugs) throw new Error(`unknown cluster: ${cluster}`);
@@ -132,7 +148,7 @@ export function buildBonusBody(courseName, cluster, lang = 'en') {
     const href = p.code
       ? `https://www.udemy.com/course/${s}/?referralCode=${p.code}`
       : `https://www.udemy.com/course/${s}`;
-    return `<p>• ${A(href, p.label)} – ${p.desc}</p>`;
+    return `<p>• ${A(href, labelFor(s, opts.titlesBySlug))} – ${p.desc}</p>`;
   }).join('');
 
   // BR marks a blank spacer line. Placement mirrors the dominant live layout
