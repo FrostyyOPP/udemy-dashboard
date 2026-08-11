@@ -151,10 +151,12 @@ export function buildBonusBody(courseName, cluster, lang = 'en', opts = {}) {
     return `<p>• ${A(href, labelFor(s, opts.titlesBySlug))} – ${p.desc}</p>`;
   }).join('');
 
-  // BR marks a blank spacer line. Placement mirrors the dominant live layout
-  // (53 of 97 published bodies): one blank line before each major heading and
-  // before the closing sign-off, and none inside a section.
-  const BR = '<p><br></p>';
+  // BR used to emit a literal blank paragraph (`<p><br></p>`) before each major
+  // heading. On top of Udemy's own paragraph margins that rendered as a gap
+  // roughly two lines deep, which read as a mistake, so the spacers were
+  // dropped on 2026-08-10 and the normal margin now does the separating.
+  // Kept as a named empty string so the section layout below stays readable.
+  const BR = '';
 
   return [
     `<p><strong>${c.h1}</strong></p>`,

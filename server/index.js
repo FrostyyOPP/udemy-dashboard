@@ -13,6 +13,7 @@ import {
   readCourseraCourses, readCourseraMetrics, readCourseraOverview, readCourseraCourseInstructors, latestUpdatedAt,
   readCourseraCourseStatus, readCourseraReviews, readCourseraCinReviews, readCourseraRevenueImport,
   readCourseraRevenueQuarterly, readCourseraQuarterTotals,
+  readCourseraCourseItems, searchCourseraItems,
   readBookmarks, addBookmark, removeBookmark,
   readCourseraCinCourses, readCourseraCinMetrics, readCourseraCinOverview,
   readFutureLearnCourses, readGo1Courses, readGo1Lifetime, readEngagement,
@@ -264,6 +265,15 @@ app.get('/api/coursera/metrics', (req, res) => {
       };
     }),
   });
+});
+
+// Content inventory: what each course is actually made of. `?q=` searches item
+// names, which is how you check whether a format (role play, coach dialogue,
+// hands-on lab) exists at all and how it was published.
+app.get('/api/coursera/content', (req, res) => {
+  const catalog = req.query.catalog === 'cin' ? 'cin' : 'starweaver';
+  if (req.query.q) return res.json({ catalog, query: req.query.q, matches: searchCourseraItems(req.query.q, { catalog }) });
+  res.json(readCourseraCourseItems({ catalog }));
 });
 
 // Every quarter on record, course and specialization totals split out. Backs

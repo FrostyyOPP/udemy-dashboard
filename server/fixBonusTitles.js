@@ -21,9 +21,9 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import Database from 'better-sqlite3';
 import { chromium } from 'playwright';
 import { minimizeWindow } from './browserWindow.js';
+import { liveBonusCourses } from './bonusCourseList.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
@@ -32,8 +32,6 @@ const DRY = process.argv.includes('--dry-run');
 const limitArg = process.argv.find((a) => a.startsWith('--limit='));
 const LIMIT = limitArg ? Number(limitArg.split('=')[1]) : Infinity;
 
-const db = new Database(join(__dirname, 'dashboard.db'), { readonly: true });
-const courses = db.prepare('SELECT real_course_id, title FROM udemy_real_course_ids ORDER BY title').all().slice(0, LIMIT);
 
 const live = await fetch('http://localhost:5055/api/courses', {
   headers: { Authorization: `Basic ${Buffer.from('admin:sw-c044312d').toString('base64')}` },
@@ -43,13 +41,15 @@ const titleBySlug = {};
 const titleById = {};
 for (const c of live.results) { titleBySlug[c.published_title] = c.title; titleById[String(c.id)] = c.title; }
 
-console.log(`${DRY ? '[DRY RUN] ' : ''}${courses.length} courses · ${live.results.length} live titles\n`);
-
 const browser = await chromium.launch({ headless: false, args: ['--disable-blink-features=AutomationControlled'], ignoreDefaultArgs: ['--enable-automation'] });
 const ctx = await browser.newContext({ storageState: join(__dirname, 'udemy-auth.json'), userAgent: UA });
 await ctx.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => undefined }));
 const page = await ctx.newPage();
 await minimizeWindow(ctx, page);
+
+// Work list comes from the LIVE catalogue, not the CSV-derived table.
+const courses = (await liveBonusCourses(page)).slice(0, LIMIT);
+console.log(`${DRY ? '[DRY RUN] ' : ''}${courses.length} courses to process\n`);
 
 mkdirSync(join(__dirname, 'bonus-lecture-backups'), { recursive: true });
 const results = []; const backups = [];
@@ -61,9 +61,9 @@ const save = () => {
 for (let i = 0; i < courses.length; i++) {
   const c = courses[i];
   const tag = `${String(i + 1).padStart(3)}/${courses.length}`;
-  const rec = { courseId: c.real_course_id, title: c.title, stage: null, selfFixed: false, recsFixed: 0 };
+  const rec = { courseId: c.realCourseId, title: c.title, stage: null, selfFixed: false, recsFixed: 0 };
   try {
-    await page.goto(`https://www.udemy.com/course/${c.real_course_id}/manage/curriculum/`, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+    await page.goto(`https://www.udemy.com/course/${c.realCourseId}/manage/curriculum/`, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
     // Poll for the CSRF cookie rather than guessing a sleep — every API call
     // below needs it, and a fixed wait is what made runs flaky.
     await page.waitForFunction(() => /csrftoken=/.test(document.cookie), { timeout: 30000 }).catch(() => {});
@@ -162,7 +162,7 @@ for (let i = 0; i < courses.length; i++) {
       const v = await J('GET', `/api-2.0/users/me/subscribed-courses/${cid}/lectures/${bonus.id}/?fields[lecture]=asset&fields[asset]=body`);
       const liveBody = v.json?.asset?.body || '';
       return { stage: 'done', selfFixed, recsFixed, changes, matches: liveBody === after, before };
-    }, { cid: c.real_course_id, realTitle: c.title, titles: titleBySlug, dry: DRY });
+    }, { cid: c.realCourseId, realTitle: c.title, titles: titleBySlug, dry: DRY });
 
     // Transient failures (throttling, a page that wasn't ready) look exactly
     // like "nothing to do" unless they are retried explicitly.
@@ -178,7 +178,7 @@ for (let i = 0; i < courses.length; i++) {
     if (r.stage === 'retry') r = { stage: 'failed', detail: r.why };
 
     Object.assign(rec, r);
-    if (r.before) { backups.push({ courseId: c.real_course_id, title: c.title, body: r.before }); delete rec.before; }
+    if (r.before) { backups.push({ courseId: c.realCourseId, title: c.title, body: r.before }); delete rec.before; }
     results.push(rec); save();
 
     const label = String(c.title).slice(0, 38);

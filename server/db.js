@@ -170,6 +170,42 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_crq_quarter ON coursera_revenue_quarterly (quarter);
   CREATE INDEX IF NOT EXISTS idx_crq_slug ON coursera_revenue_quarterly (slug);
 
+  -- Every item inside every Coursera course: the full module / lesson / item
+  -- tree, one row per item, with its type.
+  --
+  -- This is the content INVENTORY — the denominator for "what is actually
+  -- being consumed". It answers what exists and in what form (video, reading,
+  -- interactive widget) before any engagement question can be asked.
+  --
+  -- Source is onDemandCourseMaterials.v2, which is PUBLIC — no partner session
+  -- needed, so this refreshes even when the Coursera login has lapsed. The
+  -- catch: graded items (quizzes, peer reviews) are hidden from anonymous
+  -- callers, verified against a course known to contain them. So the row set
+  -- is a floor, not a complete curriculum, and per-learner consumption is not
+  -- here at all — that needs an authenticated partner export.
+  CREATE TABLE IF NOT EXISTS coursera_course_items (
+    course_slug TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    catalog TEXT NOT NULL DEFAULT 'starweaver',
+    course_name TEXT,
+    module_order INTEGER,
+    module_name TEXT,
+    lesson_order INTEGER,
+    lesson_name TEXT,
+    item_order INTEGER,
+    item_slug TEXT,
+    item_name TEXT,
+    item_type TEXT,
+    asset_type TEXT,
+    contains_widget INTEGER,
+    is_locked INTEGER,
+    minutes REAL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (course_slug, item_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_cci_type ON coursera_course_items (item_type);
+  CREATE INDEX IF NOT EXISTS idx_cci_course ON coursera_course_items (course_slug);
+
   -- A handful of real learner reviews per course (text + rating), separate
   -- from the aggregate rating column in coursera_metrics since it's one-to-many.
   -- Fetched via Coursera's feedback.v1 API, keyed by slug (needs
@@ -882,6 +918,65 @@ export function readCourseraQuarterTotals(catalog = 'starweaver') {
   ).all(catalog);
 }
 
+// --- Coursera course items (content inventory — see table comment) --------
+const insertCourseraCourseItemStmt = db.prepare(
+  `INSERT INTO coursera_course_items
+     (course_slug, item_id, catalog, course_name, module_order, module_name, lesson_order, lesson_name,
+      item_order, item_slug, item_name, item_type, asset_type, contains_widget, is_locked, minutes, updated_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+);
+export function writeCourseraCourseItems(rows) {
+  const ts = nowIso();
+  return guardedReplaceAll(
+    'coursera_course_items', rows,
+    (r) => insertCourseraCourseItemStmt.run(
+      r.courseSlug, r.itemId, r.catalog || 'starweaver', r.courseName ?? null,
+      r.moduleOrder ?? null, r.moduleName ?? null, r.lessonOrder ?? null, r.lessonName ?? null,
+      r.itemOrder ?? null, r.itemSlug ?? null, r.itemName ?? null, r.itemType ?? null,
+      r.assetType ?? null, r.containsWidget ? 1 : 0, r.isLocked ? 1 : 0, r.minutes ?? null, ts
+    ),
+    { job: 'coursera_course_items' }
+  );
+}
+
+// Content mix per course plus a catalogue-wide tally — what the "is anyone
+// using the Role Plays?" question actually needs as its denominator.
+export function readCourseraCourseItems({ catalog = 'starweaver' } = {}) {
+  const rows = db.prepare(
+    `SELECT course_slug, course_name, item_type, COUNT(*) AS items, SUM(minutes) AS minutes
+     FROM coursera_course_items WHERE catalog = ?
+     GROUP BY course_slug, item_type`
+  ).all(catalog);
+  const scrapedAt = db.prepare('SELECT MAX(updated_at) AS t FROM coursera_course_items').get().t;
+  const byCourse = {};
+  const totals = {};
+  for (const r of rows) {
+    const c = (byCourse[r.course_slug] ||= { name: r.course_name, types: {}, minutes: {}, items: 0 });
+    c.types[r.item_type] = r.items;
+    c.minutes[r.item_type] = r.minutes;
+    c.items += r.items;
+    totals[r.item_type] = (totals[r.item_type] || 0) + r.items;
+  }
+  return { byCourse, totals, courseCount: Object.keys(byCourse).length, scrapedAt };
+}
+
+// Free-text search over item names — how you find whether a format (role play,
+// coach dialogue, hands-on lab) exists at all, and how it was published.
+export function searchCourseraItems(pattern, { catalog = 'starweaver', limit = 200 } = {}) {
+  // Match with punctuation flattened, so searching "role play" also finds
+  // "Role-Playing". A plain LIKE returns zero for that and reads as "we have
+  // none", which is the wrong answer for the one item that does exist.
+  const flat = (col) => `replace(replace(replace(lower(${col}), '-', ' '), '_', ' '), '  ', ' ')`;
+  const needle = `%${String(pattern).toLowerCase().replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim()}%`;
+  return db.prepare(
+    `SELECT course_name, course_slug, item_name, item_type, asset_type, contains_widget, minutes
+     FROM coursera_course_items
+     WHERE catalog = ? AND (${flat('item_name')} LIKE ? OR lower(item_name) LIKE ?)
+     ORDER BY course_name, module_order, lesson_order, item_order
+     LIMIT ?`
+  ).all(catalog, needle, needle, limit);
+}
+
 // --- Coursera reviews (guarded snapshot — SW) ------------------------------
 const insertCourseraReviewStmt = db.prepare(
   `INSERT INTO coursera_reviews (slug, course_name, rating, review_text, reviewer_name, review_date, updated_at)
@@ -1147,7 +1242,7 @@ const ALL_TABLES = [
   'enrollment', 'revenue_course', 'revenue_monthly', 'revenue_meta', 'captions',
   'coupons', 'coupon_quota', 'udemy_real_course_ids', 'transcripts', 'coursera_courses', 'coursera_metrics', 'coursera_overview_kpis', 'coursera_course_instructors',
   'coursera_course_status', 'coursera_reviews', 'coursera_cin_reviews', 'coursera_revenue_import',
-  'coursera_revenue_quarterly',
+  'coursera_revenue_quarterly', 'coursera_course_items',
   'coursera_cin_courses', 'coursera_cin_metrics', 'coursera_cin_overview_kpis',
   'futurelearn_courses', 'go1_courses', 'go1_course_history', 'engagement_course', 'engagement_monthly', 'engagement_meta', 'engagement_ub_monthly',
   'engagement_course_monthly',
