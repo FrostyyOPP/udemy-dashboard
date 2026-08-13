@@ -27,9 +27,16 @@ const STEPS = [
   ['Coursera CIN metrics', 'scrapeCourseraCinMetrics.js', 'coursera'],
 ];
 
+// Udemy scraping is switched OFF (2026-08-13, at the user's request). The daily
+// 7am launchd job still runs, so this is the switch that keeps the three Udemy
+// steps from firing; the Coursera steps are unaffected.
+// To turn it back on: set this to false, or run with UDEMY_SCRAPING=on.
+const UDEMY_DISABLED = process.env.UDEMY_SCRAPING !== 'on';
+
 // Skip session-based steps if the session file is missing (avoids noisy failures).
-const needsUdemy = existsSync(join(__dirname, 'udemy-auth.json'));
+const needsUdemy = !UDEMY_DISABLED && existsSync(join(__dirname, 'udemy-auth.json'));
 const needsCoursera = existsSync(join(__dirname, 'coursera-auth.json'));
+if (UDEMY_DISABLED) console.log('⏸  Udemy scraping is disabled — skipping all Udemy steps.\n');
 
 // Spawn with the SAME node binary that's running us — works under launchd/cron
 // where npm/nvm aren't on PATH.
@@ -45,7 +52,10 @@ console.log(`\n=== Dashboard update · ${new Date().toISOString()} ===`);
 const results = [];
 for (const [name, file, platform] of STEPS) {
   if (platform === 'coursera' && !needsCoursera) { results.push({ name, skipped: 'not connected' }); continue; }
-  if (platform === 'udemy' && !needsUdemy) { results.push({ name, skipped: 'not connected' }); continue; }
+  if (platform === 'udemy' && !needsUdemy) {
+    results.push({ name, skipped: UDEMY_DISABLED ? 'udemy scraping disabled' : 'not connected' });
+    continue;
+  }
   console.log(`\n▶ ${name}…`);
   const t = Date.now();
   const code = await run(file);

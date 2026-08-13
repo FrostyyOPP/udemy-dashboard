@@ -47,3 +47,7 @@ server/coursera-enrollment-*.json
 # exports/coursera-revenue/, so this must stay ignored.
 exports/
 server/data.db
+
+# Instructor profile backups — contain personal data (emails, bios). Never commit.
+server/coursera-instructor-backups.json
+server/_tmp_*
