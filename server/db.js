@@ -206,6 +206,38 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_cci_type ON coursera_course_items (item_type);
   CREATE INDEX IF NOT EXISTS idx_cci_course ON coursera_course_items (course_slug);
 
+  -- One row per PERSON who teaches on Coursera, with their profile content.
+  --
+  -- Distinct from coursera_course_instructors above, which is one row per
+  -- COURSE holding names as text. A Coursera profile belongs to the individual,
+  -- not to a partner org, so somebody teaching on both the Starweaver and CIN
+  -- catalogues has a single profile and appears once here.
+  --
+  -- Sourced from the public instructors.v1 API, so it refreshes without a
+  -- partner session. The five website_* columns are Coursera's entire set of
+  -- link slots; an empty string means the SME left the slot blank, which is
+  -- what makes this table useful as a completeness audit.
+  CREATE TABLE IF NOT EXISTS coursera_instructor_profiles (
+    instructor_id TEXT PRIMARY KEY,
+    full_name TEXT,
+    title TEXT,
+    bio TEXT,
+    photo TEXT,
+    website TEXT,
+    website_linkedin TEXT,
+    website_twitter TEXT,
+    website_facebook TEXT,
+    website_gplus TEXT,
+    profile_url TEXT,
+    on_starweaver INTEGER DEFAULT 0,
+    on_cin INTEGER DEFAULT 0,
+    sw_courses INTEGER DEFAULT 0,
+    cin_courses INTEGER DEFAULT 0,
+    enrollments INTEGER DEFAULT 0,
+    is_shared_account INTEGER DEFAULT 0,
+    updated_at TEXT NOT NULL
+  );
+
   -- A handful of real learner reviews per course (text + rating), separate
   -- from the aggregate rating column in coursera_metrics since it's one-to-many.
   -- Fetched via Coursera's feedback.v1 API, keyed by slug (needs
@@ -977,6 +1009,67 @@ export function searchCourseraItems(pattern, { catalog = 'starweaver', limit = 2
   ).all(catalog, needle, needle, limit);
 }
 
+// --- Coursera instructor profiles (per person — see table comment) --------
+const insertCourseraInstructorProfileStmt = db.prepare(
+  `INSERT INTO coursera_instructor_profiles
+     (instructor_id, full_name, title, bio, photo, website, website_linkedin, website_twitter,
+      website_facebook, website_gplus, profile_url, on_starweaver, on_cin, sw_courses, cin_courses,
+      enrollments, is_shared_account, updated_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+);
+export function writeCourseraInstructorProfiles(rows) {
+  const ts = nowIso();
+  return guardedReplaceAll(
+    'coursera_instructor_profiles', rows,
+    (r) => insertCourseraInstructorProfileStmt.run(
+      r.instructorId, r.fullName ?? null, r.title ?? null, r.bio ?? null, r.photo ?? null,
+      r.website ?? null, r.linkedin ?? null, r.twitter ?? null, r.facebook ?? null, r.gplus ?? null,
+      r.profileUrl ?? null, r.onStarweaver ? 1 : 0, r.onCin ? 1 : 0,
+      r.swCourses ?? 0, r.cinCourses ?? 0, r.enrollments ?? 0, r.isShared ? 1 : 0, ts
+    ),
+    { job: 'coursera_instructor_profiles' }
+  );
+}
+
+// Returns the roster plus a completeness audit: which profile fields each SME
+// has left blank. `deadWebsite` flags go.starweaver.com, which now serves a
+// soft 404 rather than a channel page.
+export function readCourseraInstructorProfiles({ includeShared = false } = {}) {
+  const rows = db.prepare('SELECT * FROM coursera_instructor_profiles ORDER BY enrollments DESC').all();
+  const scrapedAt = db.prepare('SELECT MAX(updated_at) AS t FROM coursera_instructor_profiles').get().t;
+  const people = rows
+    .filter((r) => includeShared || !r.is_shared_account)
+    .map((r) => ({
+      id: r.instructor_id, name: r.full_name, title: r.title,
+      profileUrl: r.profile_url, photo: r.photo,
+      website: r.website || null, linkedin: r.website_linkedin || null,
+      twitter: r.website_twitter || null, facebook: r.website_facebook || null,
+      gplus: r.website_gplus || null,
+      sides: [r.on_starweaver ? 'starweaver' : null, r.on_cin ? 'cin' : null].filter(Boolean),
+      courses: (r.sw_courses || 0) + (r.cin_courses || 0),
+      swCourses: r.sw_courses, cinCourses: r.cin_courses,
+      enrollments: r.enrollments,
+      isShared: !!r.is_shared_account,
+      missing: {
+        website: !r.website, linkedin: !r.website_linkedin,
+        bio: !r.bio, title: !r.title, photo: !r.photo,
+      },
+      deadWebsite: !!(r.website && /go\.starweaver\.com/i.test(r.website)),
+    }));
+  const summary = {
+    people: people.length,
+    missingWebsite: people.filter((p) => p.missing.website).length,
+    deadWebsite: people.filter((p) => p.deadWebsite).length,
+    workingWebsite: people.filter((p) => p.website && !p.deadWebsite).length,
+    missingBio: people.filter((p) => p.missing.bio).length,
+    missingTitle: people.filter((p) => p.missing.title).length,
+    missingPhoto: people.filter((p) => p.missing.photo).length,
+    missingLinkedin: people.filter((p) => p.missing.linkedin).length,
+    onBothSides: people.filter((p) => p.sides.length === 2).length,
+  };
+  return { people, summary, scrapedAt };
+}
+
 // --- Coursera reviews (guarded snapshot — SW) ------------------------------
 const insertCourseraReviewStmt = db.prepare(
   `INSERT INTO coursera_reviews (slug, course_name, rating, review_text, reviewer_name, review_date, updated_at)
@@ -1242,7 +1335,7 @@ const ALL_TABLES = [
   'enrollment', 'revenue_course', 'revenue_monthly', 'revenue_meta', 'captions',
   'coupons', 'coupon_quota', 'udemy_real_course_ids', 'transcripts', 'coursera_courses', 'coursera_metrics', 'coursera_overview_kpis', 'coursera_course_instructors',
   'coursera_course_status', 'coursera_reviews', 'coursera_cin_reviews', 'coursera_revenue_import',
-  'coursera_revenue_quarterly', 'coursera_course_items',
+  'coursera_revenue_quarterly', 'coursera_course_items', 'coursera_instructor_profiles',
   'coursera_cin_courses', 'coursera_cin_metrics', 'coursera_cin_overview_kpis',
   'futurelearn_courses', 'go1_courses', 'go1_course_history', 'engagement_course', 'engagement_monthly', 'engagement_meta', 'engagement_ub_monthly',
   'engagement_course_monthly',

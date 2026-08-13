@@ -13,7 +13,7 @@ import {
   readCourseraCourses, readCourseraMetrics, readCourseraOverview, readCourseraCourseInstructors, latestUpdatedAt,
   readCourseraCourseStatus, readCourseraReviews, readCourseraCinReviews, readCourseraRevenueImport,
   readCourseraRevenueQuarterly, readCourseraQuarterTotals,
-  readCourseraCourseItems, searchCourseraItems,
+  readCourseraCourseItems, searchCourseraItems, readCourseraInstructorProfiles,
   readBookmarks, addBookmark, removeBookmark,
   readCourseraCinCourses, readCourseraCinMetrics, readCourseraCinOverview,
   readFutureLearnCourses, readGo1Courses, readGo1Lifetime, readEngagement,
@@ -265,6 +265,12 @@ app.get('/api/coursera/metrics', (req, res) => {
       };
     }),
   });
+});
+
+// Instructor profiles across both partner sides, one row per person, with a
+// completeness audit of which profile fields each SME has left blank.
+app.get('/api/coursera/instructors', (req, res) => {
+  res.json(readCourseraInstructorProfiles({ includeShared: req.query.includeShared === '1' }));
 });
 
 // Content inventory: what each course is actually made of. `?q=` searches item

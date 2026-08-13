@@ -77,8 +77,13 @@ let scrollRound = 0;
 while (Date.now() < deadline) {
   best = findTable();
   if (best) break;
+  // Scroll EVERY frame, including the outer Coursera page — not just the
+  // Looker iframe. The course-comparison tile is lazy and only renders once
+  // the host page has been scrolled down to it; restricting this to frames
+  // matching /looker/ left the outer page at the top, so the tile never
+  // rendered and the query never fired. The run then failed with "could not
+  // find the per-course table" even though the session was perfectly valid.
   for (const f of page.frames()) {
-    if (!/looker/.test(f.url())) continue;
     await f.evaluate(() => window.scrollBy(0, 1200)).catch(() => {});
   }
   scrollRound++;
@@ -88,7 +93,24 @@ console.log(`(found after ${scrollRound} scroll round(s))`);
 await browser.close();
 
 if (!bodies.length) { console.error('❌ No dashboard data captured. Re-connect Coursera and retry.'); process.exit(1); }
-if (!best) { console.error('❌ Could not find the per-course table in the dashboard data after 90s of polling.'); process.exit(1); }
+if (!best) {
+  // Diagnostic: say WHAT was captured, so a schema change is distinguishable
+  // from a page that never rendered the tile.
+  const seen = {};
+  for (const chunk of splitJson(bodies.join('\n'))) {
+    let o; try { o = JSON.parse(chunk); } catch { continue; }
+    const rows = o?.data?.data;
+    if (!Array.isArray(rows) || !rows.length) continue;
+    const pre = [...new Set(Object.keys(rows[0]).map((c) => c.split('.')[0]))].join(',');
+    seen[pre] = Math.max(seen[pre] || 0, rows.length);
+  }
+  console.error('❌ Could not find the per-course table in the dashboard data after 90s of polling.');
+  console.error(`   captured ${bodies.length} response body(ies), ${Object.keys(seen).length} row-bearing results:`);
+  for (const [k, v] of Object.entries(seen).sort((a, b) => b[1] - a[1]).slice(0, 12)) {
+    console.error(`     ${String(v).padStart(5)}  ${k.slice(0, 100)}`);
+  }
+  process.exit(1);
+}
 
 const courses = best.map((r) => ({
   name: (val(r, 'course_name') || '').trim(),
