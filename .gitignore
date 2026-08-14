@@ -51,3 +51,8 @@ server/data.db
 # Instructor profile backups — contain personal data (emails, bios). Never commit.
 server/coursera-instructor-backups.json
 server/_tmp_*
+
+# Thumbnail working files — resized course art and the original-image-URL
+# backups. Course data, not code; this repo is public.
+server/.thumb-resized/
+server/udemy-thumbnail-backups.json
